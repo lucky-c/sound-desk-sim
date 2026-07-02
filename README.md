@@ -28,29 +28,76 @@ external files. To mix real material instead, drop files into
 `bass.wav`/`bass.mp3`, `pad.wav`/`pad.mp3`. Channels that find their file use
 it; the rest keep the synth fallback.
 
-## Current scope: Phase 1–2
+## Challenges
 
-This build covers the working mixer: data-driven channel strips from a Pinia
-store, a per-channel chain of built-in Web Audio nodes, click-free parameter
-automation, per-channel + master metering with clip detection, a brickwall
-safety limiter on the master, synth/file stems, transport (play/pause/loop),
-and PWA install support.
+The **Challenges** panel (right of the desk) layers a learning mode over the
+free mixer. Loading a scenario applies parameter overrides that *create* a
+problem — a muddy pad, a buried kick — and you fix it by ear. Validation is
+**tolerance-band based**: a goal passes anywhere inside an acceptable range,
+never at one exact value, so different valid mixes all count. The panel shows
+live per-goal status with directional feedback (which way to move, not the
+answer), progressive hints, and an **A/B toggle** that flips between the
+original problem state (A) and your mix (B) through smooth parameter ramps —
+no glitches, no graph rebuild. Exit restores whatever free mix you had.
+
+### Authoring a challenge
+
+Challenges are pure data — append an object to the array in
+[`src/challenges/data.ts`](src/challenges/data.ts) and it appears in the
+picker. The shape (see [`src/challenges/types.ts`](src/challenges/types.ts)):
+
+```ts
+{
+  id: 'muddy-pad',
+  title: 'Clean up the muddy pad',
+  description: 'The pad sounds muddy and buried…',   // the problem, in plain language
+  initialState: [                                     // optional: creates the problem
+    { channel: 'pad', param: 'eqGainDb', value: 8 },
+  ],
+  targets: [                                          // ALL must pass (AND)
+    {                                                 // a tolerance band (inclusive)
+      channel: 'pad', param: 'eqGainDb', label: 'Low-mid EQ boost',
+      range: { max: 0 },                              // min and/or max
+      direction: 'decrease', minDelta: 6,             // optional: relative to initialState
+      guidance: { tooHigh: 'Pull the EQ gain down…' } // directional feedback, no exact numbers
+    },
+    {                                                 // OR-group: any one branch passes
+      label: 'Tighten the low end',
+      anyOf: [ /* ParamCondition, ParamCondition, … */ ],
+    },
+  ],
+  hints: ['Mud lives roughly 200–500 Hz.', /* progressively more specific */],
+}
+```
+
+`channel` is a channel id from the store (or `'master'`, faderDb only), and
+`param` is any numeric channel parameter. The validation engine
+([`src/challenges/validate.ts`](src/challenges/validate.ts)) is a pure
+function — run its tests with `bun test`.
+
+## Current scope: Phase 1–3
+
+This build covers the working mixer plus the educational layer: data-driven
+channel strips from a Pinia store, a per-channel chain of built-in Web Audio
+nodes, click-free parameter automation, per-channel + master metering with
+clip detection, a brickwall safety limiter on the master, synth/file stems,
+transport (play/pause/loop), PWA install support, and the data-driven
+challenge system with tolerance-band validation, directional feedback, hints,
+and A/B comparison.
 
 Roadmap (deliberately not built yet):
 
-- **Phase 3 — custom DSP**: hand-written AudioWorklet processors (saturation,
-  gate, custom compressor) as insert points in the chain.
-- **Phase 4 — educational layer**: guided challenges ("cut the mud", "tame the
-  peaks"), reference targets, and scoring/validation of the student's mix.
-- **Phase 5 — 3D**: a spatial venue view (Three.js/TresJS) with the mix
-  positioned in a room.
+- **Custom DSP**: hand-written AudioWorklet processors (saturation, gate,
+  custom compressor) as insert points in the chain.
+- **3D**: a spatial venue view (Three.js/TresJS) with the mix positioned in a
+  room.
 
 ### Where custom-DSP worklets will plug in
 
 The entire per-channel chain is constructed in one place
 (`buildChannel` in [`src/audio/engine.ts`](src/audio/engine.ts)) as an ordered
 list of nodes ending at the master bus. An `AudioWorkletNode` is a regular
-Web Audio node, so a Phase 3 insert slot is a data-driven splice into that
+Web Audio node, so a future insert slot is a data-driven splice into that
 chain — planned between the peaking EQ and the compressor, where analog desks
 put their inserts — without touching the store, the components, or the master
 bus/limiter. The safety limiter stays last-in-line and out of reach of any

@@ -2,9 +2,11 @@ import { defineStore } from 'pinia'
 import type {
   ChannelConfig,
   MasterState,
+  MixSnapshot,
   NumericParamKey,
   TransportState,
 } from '../types'
+import { NUMERIC_PARAM_KEYS } from '../types'
 import * as engine from '../audio/engine'
 
 /**
@@ -69,6 +71,16 @@ function defaultChannels(): ChannelConfig[] {
       },
     },
   ]
+}
+
+/** The out-of-the-box mix as a snapshot — the base challenges build on. */
+export function defaultMixSnapshot(): MixSnapshot {
+  return {
+    channels: Object.fromEntries(
+      defaultChannels().map((ch) => [ch.id, { ...ch.params }]),
+    ),
+    master: { faderDb: 0 },
+  }
 }
 
 interface MixerState {
@@ -145,6 +157,33 @@ export const useMixerStore = defineStore('mixer', {
     toggleLoop() {
       this.transport.looping = !this.transport.looping
       engine.setLooping(this.transport.looping)
+    },
+
+    /** Plain-data copy of every mix parameter (for A/B and validation). */
+    snapshot(): MixSnapshot {
+      return {
+        channels: Object.fromEntries(
+          this.channels.map((ch) => [ch.id, { ...ch.params }]),
+        ),
+        master: { ...this.master },
+      }
+    },
+
+    /**
+     * Restore a snapshot entirely through the existing ramped setters —
+     * smooth transitions, no graph teardown.
+     */
+    applySnapshot(snap: MixSnapshot) {
+      for (const ch of this.channels) {
+        const params = snap.channels[ch.id]
+        if (!params) continue
+        for (const key of NUMERIC_PARAM_KEYS) {
+          if (ch.params[key] !== params[key]) this.setParam(ch.id, key, params[key])
+        }
+        if (ch.params.mute !== params.mute) this.toggleMute(ch.id)
+        if (ch.params.solo !== params.solo) this.toggleSolo(ch.id)
+      }
+      this.setMasterFader(snap.master.faderDb)
     },
   },
 })

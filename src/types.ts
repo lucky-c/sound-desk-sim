@@ -36,6 +36,17 @@ export type NumericParamKey = {
   [K in keyof ChannelParams]: ChannelParams[K] extends number ? K : never
 }[keyof ChannelParams]
 
+/** Runtime list of the numeric parameter keys (for snapshot iteration). */
+export const NUMERIC_PARAM_KEYS = [
+  'gainDb',
+  'hpfHz',
+  'eqHz',
+  'eqGainDb',
+  'compThresholdDb',
+  'compRatio',
+  'faderDb',
+] as const satisfies readonly NumericParamKey[]
+
 /** A full channel definition — the store holds an array of these. */
 export interface ChannelConfig {
   id: string
@@ -53,4 +64,15 @@ export interface MasterState {
 export interface TransportState {
   playing: boolean
   looping: boolean
+}
+
+/**
+ * A plain-data snapshot of every mix parameter, keyed by channel id.
+ * Used by the challenge layer for A/B comparison and validation —
+ * always restored through the store's ramped setters, never applied
+ * to AudioParams directly.
+ */
+export interface MixSnapshot {
+  channels: Record<string, ChannelParams>
+  master: MasterState
 }
