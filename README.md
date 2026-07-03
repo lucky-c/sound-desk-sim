@@ -75,33 +75,41 @@ picker. The shape (see [`src/challenges/types.ts`](src/challenges/types.ts)):
 ([`src/challenges/validate.ts`](src/challenges/validate.ts)) is a pure
 function — run its tests with `bun test`.
 
-## 3D stage
+## The FOH view
 
-The **3D stage** toggle (top right) opens the venue: each channel is a
-performer you can drag around the stage, heard from the fixed FOH (front of
-house) mix position — the green marker out in the audience. Position is
-audible: left/right maps to stereo pan, distance drops the level and adds
-room sound. Pick a venue (club / hall / open air) and scale it with the
+The app is one unified live view: you stand at FOH (front of house), looking
+at the stage, with the mixing console in front of you. Each channel is a
+performer you can drag around the stage, heard from the fixed FOH mix
+position — the green marker out in the audience. Position is audible:
+left/right maps to stereo pan, distance drops the level and adds room sound.
+Pick a venue (club / hall / open air) in the overlay and scale it with the
 room-size slider — the reverb is a synthesized impulse response, re-rendered
-live, so bigger rooms genuinely ring longer. Under the hood each channel
-gains a post-fader spatial section (`StereoPanner → distance gain` dry path
-plus a send into a shared `Convolver` room bus) feeding the same master —
-the channel-strip order is unchanged and the safety limiter still guards
-everything, reverb included. Stage state lives in its own Pinia store
-(`src/stores/stage.ts`); the spatial math is pure and unit-tested
-(`src/audio/spatial.ts`). Three.js is lazy-loaded, so the 2D app pays no
-bundle cost.
+live, so bigger rooms genuinely ring longer.
+
+The **console** is a drawer over the bottom of the stage: its handle bar
+(always visible) carries Play/Pause, Loop, and master CLIP/LIM monitoring
+with a mini meter; the body shows a compact strip per channel (fader, meter,
+mute/solo) that expands to the full strip (gain, HPF, EQ, compressor) with
+the `+ EQ / comp` button. Hide the whole console for a clean view of the
+stage — the handle stays.
+
+Under the hood each channel gains a post-fader spatial section
+(`StereoPanner → distance gain` dry path plus a send into a shared
+`Convolver` room bus) feeding the same master — the channel-strip order is
+unchanged and the safety limiter still guards everything, reverb included.
+Stage state lives in its own Pinia store (`src/stores/stage.ts`); the
+spatial math is pure and unit-tested (`src/audio/spatial.ts`).
 
 ## Current scope
 
-This build covers the working mixer, the educational layer, and the 3D
-stage: data-driven channel strips from a Pinia store, a per-channel chain
+This build covers the working mixer, the educational layer, and the unified
+FOH view: data-driven channel strips from a Pinia store, a per-channel chain
 of built-in Web Audio nodes, click-free parameter automation, per-channel +
 master metering with clip detection, a brickwall safety limiter on the
 master, synth/file stems, transport (play/pause/loop), PWA install support,
 the data-driven challenge system with tolerance-band validation, directional
-feedback, hints, and A/B comparison, and the spatial stage view with
-draggable performers and room simulation.
+feedback, hints, and A/B comparison, and the live stage view with draggable
+performers, room simulation, and the hideable console drawer.
 
 Roadmap (deliberately not built yet):
 

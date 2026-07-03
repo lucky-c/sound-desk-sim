@@ -2,10 +2,15 @@
 import { computed } from 'vue'
 import { clamp, linToDb } from '../lib/units'
 
-const props = defineProps<{
-  /** Linear peak amplitude (0..~1). */
-  peak: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** Linear peak amplitude (0..~1). */
+    peak: number
+    /** Tailwind sizing for the meter well (height + width). */
+    sizeClass?: string
+  }>(),
+  { sizeClass: 'h-40 w-3' },
+)
 
 /** Meter range: -60 dBFS at the bottom, 0 dBFS at the top. */
 const heightPct = computed(() => {
@@ -22,7 +27,7 @@ const barColor = computed(() => {
 </script>
 
 <template>
-  <div class="relative h-40 w-3 overflow-hidden rounded-sm bg-zinc-800">
+  <div class="relative overflow-hidden rounded-sm bg-zinc-800" :class="sizeClass">
     <!-- -12 dB and -3 dB tick marks -->
     <div class="absolute inset-x-0 border-t border-zinc-600" style="top: 5%" />
     <div class="absolute inset-x-0 border-t border-zinc-600" style="top: 20%" />

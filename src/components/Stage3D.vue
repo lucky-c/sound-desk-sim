@@ -341,43 +341,37 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
-    <div class="relative">
-      <div
-        ref="container"
-        class="h-[480px] w-full touch-none overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 [&>canvas]:block"
-      />
-      <div
-        v-if="dragReadout"
-        class="pointer-events-none absolute left-3 top-3 rounded bg-zinc-950/90 px-3 py-1.5 font-mono text-sm text-emerald-300"
-      >
-        {{ dragReadout }}
-      </div>
-    </div>
+  <div class="relative h-full w-full">
+    <div ref="container" class="absolute inset-0 touch-none [&>canvas]:block" />
 
     <div
-      class="mt-3 flex flex-wrap items-end gap-4 rounded-lg border border-zinc-800 bg-zinc-900 p-3"
+      v-if="dragReadout"
+      class="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded bg-zinc-950/90 px-3 py-1.5 font-mono text-sm text-emerald-300"
     >
-      <div>
-        <p class="mb-1.5 text-[10px] uppercase tracking-wide text-zinc-500">Venue</p>
-        <div class="flex overflow-hidden rounded-md border border-zinc-700 text-xs font-semibold">
-          <button
-            v-for="[preset, def] in presetEntries"
-            :key="preset"
-            class="px-3 py-1.5 transition-colors"
-            :class="
-              stage.roomPreset === preset
-                ? 'bg-emerald-500 text-black'
-                : 'bg-zinc-950 text-zinc-500 hover:bg-zinc-800'
-            "
-            @click="stage.setRoomPreset(preset)"
-          >
-            {{ def.label }}
-          </button>
-        </div>
-      </div>
+      {{ dragReadout }}
+    </div>
 
-      <div class="w-48" :class="stage.roomPreset === 'openair' ? 'opacity-40' : ''">
+    <!-- venue controls overlay -->
+    <div
+      class="absolute left-3 top-3 flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950/85 p-2.5 backdrop-blur"
+      :title="roomHint"
+    >
+      <div class="flex overflow-hidden rounded-md border border-zinc-700 text-xs font-semibold">
+        <button
+          v-for="[preset, def] in presetEntries"
+          :key="preset"
+          class="px-3 py-1.5 transition-colors"
+          :class="
+            stage.roomPreset === preset
+              ? 'bg-emerald-500 text-black'
+              : 'bg-zinc-950 text-zinc-500 hover:bg-zinc-800'
+          "
+          @click="stage.setRoomPreset(preset)"
+        >
+          {{ def.label }}
+        </button>
+      </div>
+      <div class="w-44" :class="stage.roomPreset === 'openair' ? 'opacity-40' : ''">
         <ParamSlider
           label="Room size"
           unit="×"
@@ -389,16 +383,15 @@ onMounted(() => {
           @update:model-value="stage.setRoomSize($event)"
         />
       </div>
-
-      <p class="min-w-40 flex-1 text-[11px] leading-snug text-zinc-500">
-        {{ roomHint }}
-      </p>
+      <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>
     </div>
 
-    <p class="mt-2 text-[11px] text-zinc-600">
-      Drag performers around the stage — position changes pan, level, and how
-      much room you hear. The green marker is FOH: your ears stay there while
-      the camera orbits (drag empty space · scroll to zoom).
+    <p
+      class="pointer-events-none absolute right-3 top-3 max-w-56 text-right text-[10px] leading-snug text-zinc-500"
+    >
+      Drag performers to place them — position changes pan, level, and room.
+      Green marker = FOH, your ears. Drag empty space to orbit · scroll to
+      zoom.
     </p>
   </div>
 </template>
