@@ -4,53 +4,53 @@ import type { Challenge } from './types'
  * Seed challenges — examples of the schema, not the final curriculum.
  * To add a challenge, append an object here; nothing else changes.
  * All validation is tolerance-band based: any value inside a range passes.
+ *
+ * Channel refs are console slots; challenges load against the default band:
+ * ch01 = Kick, ch02 = Snare, ch03 = Bass, ch04 = Keys.
  */
 export const challenges: Challenge[] = [
   {
-    id: 'muddy-pad',
-    title: 'Clean up the muddy pad',
+    id: 'muddy-keys',
+    title: 'Clean up the muddy keys',
     description:
-      'The pad sounds muddy and buried — thick low-mids are smearing over the ' +
-      'kick and bass. Get the mud out while keeping the pad present.',
+      'The keys sound muddy and buried — thick low-mids are smearing over the ' +
+      'kick and bass. Get the mud out while keeping the keys present.',
     initialState: [
-      { channel: 'pad', param: 'eqHz', value: 300 },
-      { channel: 'pad', param: 'eqGainDb', value: 8 },
-      { channel: 'pad', param: 'hpfHz', value: 40 },
+      { channel: 'ch04', param: 'eqLoMidFreq', value: 300 },
+      { channel: 'ch04', param: 'eqLoMidGainDb', value: 8 },
+      { channel: 'ch04', param: 'hpfHz', value: 25 },
     ],
     targets: [
       {
-        channel: 'pad',
-        param: 'eqGainDb',
+        channel: 'ch04',
+        param: 'eqLoMidGainDb',
         label: 'Low-mid EQ boost',
         range: { max: 0 },
         guidance: {
           tooHigh:
-            'The low-mid boost is still in — pull the pad EQ gain down to flat, or into a cut.',
+            'The low-mid boost is still in — pull the keys’ lo-mid EQ gain down to flat, or into a cut.',
         },
       },
       {
         label: 'Tighten the low end (either way works)',
         anyOf: [
           {
-            channel: 'pad',
+            channel: 'ch04',
             param: 'hpfHz',
-            label: 'High-pass filter',
+            label: 'Low cut',
             range: { min: 100, max: 450 },
             guidance: {
-              tooLow:
-                'The high-pass is letting low rumble through — sweep it up past the mud.',
-              tooHigh:
-                'That high-pass is gutting the whole pad — ease it back down.',
+              tooLow: 'The low cut is letting rumble through — sweep it up past the mud.',
+              tooHigh: 'That low cut is gutting the whole part — ease it back down.',
             },
           },
           {
-            channel: 'pad',
-            param: 'eqGainDb',
+            channel: 'ch04',
+            param: 'eqLoMidGainDb',
             label: 'Low-mid EQ cut',
             range: { max: -3 },
             guidance: {
-              tooHigh:
-                'Or dig the EQ into a proper cut of a few dB in the low-mids.',
+              tooHigh: 'Or dig the lo-mid EQ into a proper cut of a few dB.',
             },
           },
         ],
@@ -58,50 +58,50 @@ export const challenges: Challenge[] = [
     ],
     hints: [
       'Mud usually lives roughly between 200 and 500 Hz.',
-      'Look at the pad strip: something in its EQ section is boosting exactly where mud lives.',
-      'Two valid fixes: cut the pad EQ a few dB around the low-mids, or sweep the high-pass up past ~100 Hz.',
+      'Look at the keys strip: something in its EQ section is boosting exactly where mud lives.',
+      'Two valid fixes: cut the lo-mid EQ a few dB, or sweep the low cut up past ~100 Hz.',
     ],
   },
 
   {
-    id: 'harsh-pad',
-    title: 'Tame the harsh pad',
+    id: 'harsh-keys',
+    title: 'Tame the harsh keys',
     description:
-      'The pad is piercing — an aggressive upper-mid boost makes it fatiguing ' +
-      'at any volume. Take the edge off without just burying the fader.',
+      'The keys are piercing — an aggressive upper-mid boost makes them ' +
+      'fatiguing at any volume. Take the edge off without just burying the fader.',
     initialState: [
-      { channel: 'pad', param: 'eqHz', value: 3500 },
-      { channel: 'pad', param: 'eqGainDb', value: 9 },
+      { channel: 'ch04', param: 'eqHiMidFreq', value: 3500 },
+      { channel: 'ch04', param: 'eqHiMidGainDb', value: 9 },
     ],
     targets: [
       {
-        channel: 'pad',
-        param: 'eqGainDb',
+        channel: 'ch04',
+        param: 'eqHiMidGainDb',
         label: 'Upper-mid boost',
         range: { max: 0 },
         direction: 'decrease',
         minDelta: 6,
         guidance: {
           tooHigh:
-            'Still piercing — that upper-mid EQ boost needs to come down, and by a lot.',
+            'Still piercing — that hi-mid EQ boost needs to come down, and by a lot.',
         },
       },
       {
-        channel: 'pad',
+        channel: 'ch04',
         param: 'faderDb',
-        label: 'Pad level',
+        label: 'Keys level',
         range: { min: -20, max: -4 },
         guidance: {
           tooLow:
-            'Don’t just bury the pad — bring the fader back up and fix the tone instead.',
-          tooHigh: 'The pad is a texture, not the lead — ease the fader down.',
+            'Don’t just bury the keys — bring the fader back up and fix the tone instead.',
+          tooHigh: 'The keys are accompaniment, not the lead — ease the fader down.',
         },
       },
     ],
     hints: [
       'Harshness tends to sit in the 2–6 kHz region.',
       'Muting or burying the channel is not mixing — the fader has to stay in a usable range.',
-      'Flatten (or cut) the pad EQ gain: it starts from a big boost, so it has a long way down.',
+      'Flatten (or cut) the hi-mid EQ gain: it starts from a big boost, so it has a long way down.',
     ],
   },
 
@@ -112,12 +112,12 @@ export const challenges: Challenge[] = [
       'The kick has vanished under the bass — the low end is all sustain and ' +
       'no punch. Rebalance the two so the kick leads.',
     initialState: [
-      { channel: 'kick', param: 'faderDb', value: -26 },
-      { channel: 'bass', param: 'faderDb', value: 2 },
+      { channel: 'ch01', param: 'faderDb', value: -26 },
+      { channel: 'ch03', param: 'faderDb', value: 2 },
     ],
     targets: [
       {
-        channel: 'kick',
+        channel: 'ch01',
         param: 'faderDb',
         label: 'Kick level',
         range: { min: -10, max: 2 },
@@ -127,7 +127,7 @@ export const challenges: Challenge[] = [
         },
       },
       {
-        channel: 'bass',
+        channel: 'ch03',
         param: 'faderDb',
         label: 'Bass level',
         range: { min: -30, max: -5 },

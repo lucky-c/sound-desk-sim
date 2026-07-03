@@ -24,6 +24,8 @@ export const useChallengeStore = defineStore('challenges', () => {
 
   /** The learner's free mix, restored when leaving challenge mode. */
   const freeMixSnapshot = ref<MixSnapshot | null>(null)
+  /** The learner's channel plugging, restored when leaving challenge mode. */
+  const freePlugging = ref<Record<string, string | null> | null>(null)
   /** The challenge's starting state (defaults + initialState) — the A reference. */
   const initialSnapshot = ref<MixSnapshot | null>(null)
   /** The learner's mix (B), parked while listening to A. */
@@ -58,7 +60,10 @@ export const useChallengeStore = defineStore('challenges', () => {
   function load(id: string) {
     // Entering from free mix: remember it. Switching challenges: keep the
     // original free mix as the thing to eventually return to.
-    if (!activeId.value) freeMixSnapshot.value = mixer.snapshot()
+    if (!activeId.value) {
+      freeMixSnapshot.value = mixer.snapshot()
+      freePlugging.value = mixer.plugMap()
+    }
 
     const challenge = challenges.find((c) => c.id === id)
     if (!challenge) return
@@ -67,6 +72,9 @@ export const useChallengeStore = defineStore('challenges', () => {
     abState.value = 'B'
     revealedHints.value = 0
     parkedMix.value = null
+
+    // Challenges are authored against the default band on ch 1–4.
+    mixer.resetPluggingToDefault()
 
     // Build the problem: default mix + the challenge's overrides,
     // all through ramped setters (no graph rebuild, no clicks).
@@ -90,6 +98,7 @@ export const useChallengeStore = defineStore('challenges', () => {
     initialSnapshot.value = null
     parkedMix.value = null
     abState.value = 'B'
+    if (freePlugging.value) mixer.applyPlugMap(freePlugging.value)
     if (freeMixSnapshot.value) mixer.applySnapshot(freeMixSnapshot.value)
   }
 

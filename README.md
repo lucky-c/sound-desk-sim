@@ -86,12 +86,23 @@ Pick a venue (club / hall / open air) in the overlay and scale it with the
 room-size slider — the reverb is a synthesized impulse response, re-rendered
 live, so bigger rooms genuinely ring longer.
 
-The **console** is a drawer over the bottom of the stage: its handle bar
-(always visible) carries Play/Pause, Loop, and master CLIP/LIM monitoring
-with a mini meter; the body shows a compact strip per channel (fader, meter,
-mute/solo) that expands to the full strip (gain, HPF, EQ, compressor) with
-the `+ EQ / comp` button. Hide the whole console for a clean view of the
-stage — the handle stays.
+The **console** is a 16-channel, Midas-M32R-inspired desk in a drawer over
+the bottom of the stage. Channels 1–4 come pre-plugged (kick, snare, bass,
+keys); the other 12 slots take any instrument from the built-in library —
+12 synthesized full-band instruments (drums, bass, guitars, keys, pad,
+brass, leads, percussion), all locked to one groove so any combination plays
+together. Plug/unplug from each strip's picker, even mid-playback — new
+sources start loop-aligned, and the performer appears on stage at their
+natural spot.
+
+Each strip is M32-style: preamp gain, low cut, 4-band EQ (low shelf, two
+parametric mids with width/Q, high shelf), a full compressor (threshold,
+ratio, attack, release, makeup), a **pan knob** (pans the channel in the PA,
+working on top of the performer's natural stage-position pan), fader, meter,
+and mute/solo. Compact strips show pan + fader + M/S; expand with `+` for
+the full strip. The handle bar (always visible) carries Play/Pause, Loop,
+**master volume**, and master CLIP/LIM monitoring with a mini meter. Hide
+the whole console for a clean view of the stage — the handle stays.
 
 Under the hood each channel gains a post-fader spatial section
 (`StereoPanner → distance gain` dry path plus a send into a shared

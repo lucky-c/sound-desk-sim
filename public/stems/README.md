@@ -1,16 +1,27 @@
 # Drop-in stems
 
 Put your own audio files in this folder to replace the built-in synthesized
-stems. On the next Play, any channel that finds its file here uses it instead
-of the synth fallback (the strip shows a small `FILE`/`SYNTH` badge).
+instruments. On the next Play (or re-plug), any instrument that finds its
+file here uses it instead of the synth fallback (the strip shows a small
+`FILE`/`SYNTH` badge).
 
-Expected file names (first match wins per channel):
+Expected file names — `<instrument-id>.wav` tried first, then
+`<instrument-id>.mp3`:
 
-| Channel   | File names tried            |
-| --------- | --------------------------- |
-| Kick      | `kick.wav`, then `kick.mp3` |
-| Bass      | `bass.wav`, then `bass.mp3` |
-| Pad / Vox | `pad.wav`, then `pad.mp3`   |
+| Instrument  | File name base |
+| ----------- | -------------- |
+| Kick        | `kick`         |
+| Snare       | `snare`        |
+| Hi-hats     | `hats`         |
+| Shaker      | `shaker`       |
+| Bass        | `bass`         |
+| Rhythm Gtr  | `guitar`       |
+| Lead Gtr    | `guitar-lead`  |
+| Keys        | `keys`         |
+| Pad         | `pad`          |
+| Brass       | `brass`        |
+| Lead Synth  | `lead`         |
+| Cowbell     | `cowbell`      |
 
 Notes:
 

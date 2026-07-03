@@ -38,8 +38,8 @@ if (import.meta.env.DEV) {
 
       <footer class="text-xs text-zinc-600">
         Turn your volume down before the first Play. Signal chain per channel:
-        input gain → high-pass → peaking EQ → compressor → fader → stage
-        position (pan · distance · room send) → master bus → safety limiter.
+        gain → low cut → 4-band EQ → compressor (+ makeup) → fader → pan +
+        stage position (distance · room send) → master bus → safety limiter.
         Drop your own stems into
         <code class="text-zinc-500">/public/stems/</code> (see its README).
       </footer>

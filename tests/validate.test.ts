@@ -7,10 +7,22 @@ function params(overrides: Partial<ChannelParams> = {}): ChannelParams {
   return {
     gainDb: 0,
     hpfHz: 100,
-    eqHz: 1000,
-    eqGainDb: 0,
+    eqLowFreq: 100,
+    eqLowGainDb: 0,
+    eqLoMidFreq: 400,
+    eqLoMidGainDb: 0,
+    eqLoMidQ: 1,
+    eqHiMidFreq: 2500,
+    eqHiMidGainDb: 0,
+    eqHiMidQ: 1,
+    eqHighFreq: 8000,
+    eqHighGainDb: 0,
     compThresholdDb: -20,
     compRatio: 4,
+    compAttackMs: 10,
+    compReleaseMs: 150,
+    compMakeupDb: 0,
+    pan: 0,
     faderDb: -6,
     mute: false,
     solo: false,
@@ -32,7 +44,7 @@ const bandChallenge: Challenge = {
   targets: [
     {
       channel: 'vocal',
-      param: 'eqGainDb',
+      param: 'eqLoMidGainDb',
       label: 'Vocal EQ gain',
       range: { min: -6, max: -2 },
     },
@@ -42,33 +54,33 @@ const bandChallenge: Challenge = {
 describe('tolerance-band validation (never exact-match)', () => {
   test('passes anywhere inside the band, not just at one value', () => {
     for (const v of [-6, -5.1, -4, -2.7, -2]) {
-      const result = validateChallenge(bandChallenge, snapshot({ eqGainDb: v }), snapshot())
+      const result = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: v }), snapshot())
       expect(result.solved).toBe(true)
     }
   })
 
   test('fails when the value is outside the band, with directional guidance', () => {
-    const tooHigh = validateChallenge(bandChallenge, snapshot({ eqGainDb: 3 }), snapshot())
+    const tooHigh = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: 3 }), snapshot())
     expect(tooHigh.solved).toBe(false)
     expect(tooHigh.targets[0]?.met).toBe(false)
     expect(tooHigh.targets[0]?.guidance).toContain('down')
 
-    const tooLow = validateChallenge(bandChallenge, snapshot({ eqGainDb: -12 }), snapshot())
+    const tooLow = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: -12 }), snapshot())
     expect(tooLow.solved).toBe(false)
     expect(tooLow.targets[0]?.guidance).toContain('up')
   })
 
   test('band edges are inclusive; just outside fails', () => {
-    const atMin = validateChallenge(bandChallenge, snapshot({ eqGainDb: -6 }), snapshot())
+    const atMin = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: -6 }), snapshot())
     expect(atMin.solved).toBe(true)
 
-    const atMax = validateChallenge(bandChallenge, snapshot({ eqGainDb: -2 }), snapshot())
+    const atMax = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: -2 }), snapshot())
     expect(atMax.solved).toBe(true)
 
-    const belowMin = validateChallenge(bandChallenge, snapshot({ eqGainDb: -6.01 }), snapshot())
+    const belowMin = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: -6.01 }), snapshot())
     expect(belowMin.solved).toBe(false)
 
-    const aboveMax = validateChallenge(bandChallenge, snapshot({ eqGainDb: -1.99 }), snapshot())
+    const aboveMax = validateChallenge(bandChallenge, snapshot({ eqLoMidGainDb: -1.99 }), snapshot())
     expect(aboveMax.solved).toBe(false)
   })
 })
@@ -83,7 +95,7 @@ describe('anyOf groups (multiple valid solutions)', () => {
         label: 'Clean the low end',
         anyOf: [
           { channel: 'vocal', param: 'hpfHz', label: 'HPF', range: { min: 150, max: 400 } },
-          { channel: 'vocal', param: 'eqGainDb', label: 'EQ cut', range: { max: -3 } },
+          { channel: 'vocal', param: 'eqLoMidGainDb', label: 'EQ cut', range: { max: -3 } },
         ],
       },
     ],
@@ -92,7 +104,7 @@ describe('anyOf groups (multiple valid solutions)', () => {
   test('passes when only the first alternative is met', () => {
     const result = validateChallenge(
       anyOfChallenge,
-      snapshot({ hpfHz: 200, eqGainDb: 5 }),
+      snapshot({ hpfHz: 200, eqLoMidGainDb: 5 }),
       snapshot(),
     )
     expect(result.solved).toBe(true)
@@ -101,7 +113,7 @@ describe('anyOf groups (multiple valid solutions)', () => {
   test('passes when only the second alternative is met', () => {
     const result = validateChallenge(
       anyOfChallenge,
-      snapshot({ hpfHz: 40, eqGainDb: -4 }),
+      snapshot({ hpfHz: 40, eqLoMidGainDb: -4 }),
       snapshot(),
     )
     expect(result.solved).toBe(true)
@@ -110,7 +122,7 @@ describe('anyOf groups (multiple valid solutions)', () => {
   test('fails when no alternative is met, exposing each branch result', () => {
     const result = validateChallenge(
       anyOfChallenge,
-      snapshot({ hpfHz: 40, eqGainDb: 5 }),
+      snapshot({ hpfHz: 40, eqLoMidGainDb: 5 }),
       snapshot(),
     )
     expect(result.solved).toBe(false)
@@ -148,21 +160,21 @@ describe('direction conditions (relative to the initial state)', () => {
     targets: [
       {
         channel: 'vocal',
-        param: 'eqGainDb',
+        param: 'eqLoMidGainDb',
         label: 'EQ boost',
         direction: 'decrease',
         minDelta: 6,
       },
     ],
   }
-  const initial = snapshot({ eqGainDb: 9 })
+  const initial = snapshot({ eqLoMidGainDb: 9 })
 
   test('unmet until reduced by at least minDelta from initial', () => {
-    const barelyMoved = validateChallenge(directionChallenge, snapshot({ eqGainDb: 5 }), initial)
+    const barelyMoved = validateChallenge(directionChallenge, snapshot({ eqLoMidGainDb: 5 }), initial)
     expect(barelyMoved.solved).toBe(false)
     expect(barelyMoved.targets[0]?.guidance).toBeTruthy()
 
-    const enough = validateChallenge(directionChallenge, snapshot({ eqGainDb: 3 }), initial)
+    const enough = validateChallenge(directionChallenge, snapshot({ eqLoMidGainDb: 3 }), initial)
     expect(enough.solved).toBe(true)
   })
 })
@@ -174,8 +186,8 @@ describe('robustness', () => {
       title: 'Bad ref',
       description: 'points at nothing',
       targets: [
-        { channel: 'nope', param: 'eqGainDb', label: 'Ghost', range: { max: 0 } },
-        { channel: 'master', param: 'eqGainDb', label: 'Master has no EQ', range: { max: 0 } },
+        { channel: 'nope', param: 'eqLoMidGainDb', label: 'Ghost', range: { max: 0 } },
+        { channel: 'master', param: 'eqLoMidGainDb', label: 'Master has no EQ', range: { max: 0 } },
       ],
     }
     const result = validateChallenge(bad, snapshot(), snapshot())

@@ -1,30 +1,43 @@
-/** The three built-in synthesized stems. */
-export type SynthStem = 'kick' | 'bass' | 'pad'
-
 /**
- * Where a channel's audio comes from.
- * `files` lists candidate paths under /public/stems/ tried in order;
- * if none loads/decodes, the engine falls back to the synthesized stem.
+ * Continuous (automatable) per-channel parameters — an M32R-inspired strip:
+ * preamp gain, low-cut, 4-band EQ (low shelf, two parametric mids with
+ * width/Q, high shelf), full compressor (threshold/ratio/attack/release +
+ * makeup), pan, and fader.
  */
-export interface ChannelSource {
-  synth: SynthStem
-  files: string[]
-}
-
-/** Continuous (automatable) per-channel parameters. */
 export interface ChannelParams {
-  /** Input gain in dB, applied before the processing chain. */
+  /** Input (preamp) gain in dB, applied before the processing chain. */
   gainDb: number
-  /** High-pass filter cutoff in Hz. */
+  /** Low-cut (high-pass) frequency in Hz. */
   hpfHz: number
-  /** Peaking EQ center frequency in Hz. */
-  eqHz: number
-  /** Peaking EQ boost/cut in dB. */
-  eqGainDb: number
-  /** Compressor threshold in dB. */
+
+  /** Low shelf. */
+  eqLowFreq: number
+  eqLowGainDb: number
+  /** Low-mid parametric bell. */
+  eqLoMidFreq: number
+  eqLoMidGainDb: number
+  eqLoMidQ: number
+  /** High-mid parametric bell. */
+  eqHiMidFreq: number
+  eqHiMidGainDb: number
+  eqHiMidQ: number
+  /** High shelf. */
+  eqHighFreq: number
+  eqHighGainDb: number
+
+  /** Compressor. */
   compThresholdDb: number
-  /** Compressor ratio (1 = off, 20 = near-limiting). */
   compRatio: number
+  compAttackMs: number
+  compReleaseMs: number
+  compMakeupDb: number
+
+  /**
+   * PA pan, -1 (hard left) .. +1 (hard right) — the desk's pan knob. Works
+   * on top of (and dominates) the performer's natural stage-position pan.
+   */
+  pan: number
+
   /** Channel fader in dB (post-processing, pre-master). */
   faderDb: number
   mute: boolean
@@ -40,20 +53,66 @@ export type NumericParamKey = {
 export const NUMERIC_PARAM_KEYS = [
   'gainDb',
   'hpfHz',
-  'eqHz',
-  'eqGainDb',
+  'eqLowFreq',
+  'eqLowGainDb',
+  'eqLoMidFreq',
+  'eqLoMidGainDb',
+  'eqLoMidQ',
+  'eqHiMidFreq',
+  'eqHiMidGainDb',
+  'eqHiMidQ',
+  'eqHighFreq',
+  'eqHighGainDb',
   'compThresholdDb',
   'compRatio',
+  'compAttackMs',
+  'compReleaseMs',
+  'compMakeupDb',
+  'pan',
   'faderDb',
 ] as const satisfies readonly NumericParamKey[]
 
-/** A full channel definition — the store holds an array of these. */
+/** Neutral strip settings — how an unplugged/new channel comes up. */
+export function neutralParams(): ChannelParams {
+  return {
+    gainDb: 0,
+    hpfHz: 20,
+    eqLowFreq: 100,
+    eqLowGainDb: 0,
+    eqLoMidFreq: 400,
+    eqLoMidGainDb: 0,
+    eqLoMidQ: 1,
+    eqHiMidFreq: 2500,
+    eqHiMidGainDb: 0,
+    eqHiMidQ: 1,
+    eqHighFreq: 8000,
+    eqHighGainDb: 0,
+    compThresholdDb: -24,
+    compRatio: 2,
+    compAttackMs: 10,
+    compReleaseMs: 150,
+    compMakeupDb: 0,
+    pan: 0,
+    faderDb: -8,
+    mute: false,
+    solo: false,
+  }
+}
+
+/**
+ * A console channel: a fixed slot (like a desk's channel number) that an
+ * instrument can be plugged into. `name`/`color` mirror the plugged
+ * instrument (or a neutral placeholder when empty).
+ */
 export interface ChannelConfig {
+  /** Slot id, 'ch01'..'ch16'. */
   id: string
+  /** 1-based channel number. */
+  num: number
+  /** Plugged instrument id from the library, or null when empty. */
+  instrumentId: string | null
   name: string
-  /** Tailwind-compatible accent color (hex) used in the UI. */
   color: string
-  source: ChannelSource
   params: ChannelParams
 }
 

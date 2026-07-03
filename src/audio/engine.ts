@@ -1,19 +1,21 @@
 import { reactive } from 'vue'
 import type { ChannelConfig, NumericParamKey } from '../types'
-import { dbToLin } from '../lib/units'
-import { renderSynthStem } from './synthStems'
+import { clamp, dbToLin } from '../lib/units'
+import { getInstrument, renderInstrument } from './instruments'
 
 /**
  * The audio engine: one shared AudioContext and the full node graph.
  *
- * Per-channel chain (built-in nodes only, strictly in this order):
- *   GainNode (input) → BiquadFilterNode (highpass) → BiquadFilterNode (peaking)
- *   → DynamicsCompressorNode → GainNode (fader) → spatial section → master bus
+ * Per-channel chain (built-in nodes only, M32R-inspired strip order):
+ *   GainNode (input) → BiquadFilter (low-cut) → BiquadFilter (low shelf)
+ *   → BiquadFilter (lo-mid bell) → BiquadFilter (hi-mid bell)
+ *   → BiquadFilter (high shelf) → DynamicsCompressor → GainNode (makeup)
+ *   → GainNode (fader) → spatial section → master bus
  *
- * Spatial section (stage positioning, after the strip so it never changes
- * the strip's node order):
- *   analyser → StereoPannerNode (pan) → GainNode (distance) → master bus  [dry]
- *   analyser → GainNode (reverb send) → shared room bus                   [wet]
+ * Spatial section (stage positioning + the desk's pan knob):
+ *   analyser → StereoPannerNode (knob pan + stage pan) → GainNode (distance)
+ *   → master bus                                                       [dry]
+ *   analyser → GainNode (reverb send) → shared room bus                [wet]
  *   room bus: GainNode → ConvolverNode (synthesized IR) → GainNode (wet)
  *   → master bus
  *
@@ -21,30 +23,34 @@ import { renderSynthStem } from './synthStems'
  *   masterFader (GainNode) → masterAnalyser (pre-limiter metering/clip tap)
  *   → SAFETY LIMITER (DynamicsCompressorNode as brickwall) → destination
  *
- * The limiter is always on and independent of every user control — it exists
- * to protect hearing, not to sound good.
- *
- * Phase 3 note: custom AudioWorklet DSP will later be inserted between the
- * peaking EQ and the compressor (see README roadmap); the chain is built in
- * one place (buildChannel) precisely so that insertion is a one-line change.
+ * The limiter is always on and independent of every user control.
  */
 
 interface ChannelNodes {
   input: GainNode
   hpf: BiquadFilterNode
-  eq: BiquadFilterNode
+  eqLow: BiquadFilterNode
+  eqLoMid: BiquadFilterNode
+  eqHiMid: BiquadFilterNode
+  eqHigh: BiquadFilterNode
   comp: DynamicsCompressorNode
+  makeup: GainNode
   fader: GainNode
   analyser: AnalyserNode
   panner: StereoPannerNode
   dryGain: GainNode
   sendGain: GainNode
+  /** Desk pan knob and stage-position pan, combined into panner.pan. */
+  knobPan: number
+  stagePan: number
   buffer: AudioBuffer | null
   source: AudioBufferSourceNode | null
 }
 
 /** Time constant for all user-driven parameter ramps (avoids zipper noise). */
 const RAMP_TC = 0.02
+/** How strongly the performer's stage position pans, under the knob. */
+const STAGE_PAN_WEIGHT = 0.6
 
 let ctx: AudioContext | null = null
 let masterFader: GainNode | null = null
@@ -56,9 +62,10 @@ let reverbWet: GainNode | null = null
 let currentWet = 0
 const channelNodes = new Map<string, ChannelNodes>()
 
-let buffersLoaded = false
 let sourcesActive = false
-let stoppingManually = false
+let looping = true
+let loopStartedAt = 0
+const liveSources = new Set<AudioBufferSourceNode>()
 let onAllEnded: (() => void) | null = null
 
 /** Reactive engine info for the UI (read-only outside this module). */
@@ -119,18 +126,37 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   hpf.frequency.value = p.hpfHz
   hpf.Q.value = 0.707
 
-  const eq = c.createBiquadFilter()
-  eq.type = 'peaking'
-  eq.frequency.value = p.eqHz
-  eq.gain.value = p.eqGainDb
-  eq.Q.value = 1.0
+  const eqLow = c.createBiquadFilter()
+  eqLow.type = 'lowshelf'
+  eqLow.frequency.value = p.eqLowFreq
+  eqLow.gain.value = p.eqLowGainDb
+
+  const eqLoMid = c.createBiquadFilter()
+  eqLoMid.type = 'peaking'
+  eqLoMid.frequency.value = p.eqLoMidFreq
+  eqLoMid.gain.value = p.eqLoMidGainDb
+  eqLoMid.Q.value = p.eqLoMidQ
+
+  const eqHiMid = c.createBiquadFilter()
+  eqHiMid.type = 'peaking'
+  eqHiMid.frequency.value = p.eqHiMidFreq
+  eqHiMid.gain.value = p.eqHiMidGainDb
+  eqHiMid.Q.value = p.eqHiMidQ
+
+  const eqHigh = c.createBiquadFilter()
+  eqHigh.type = 'highshelf'
+  eqHigh.frequency.value = p.eqHighFreq
+  eqHigh.gain.value = p.eqHighGainDb
 
   const comp = c.createDynamicsCompressor()
   comp.threshold.value = p.compThresholdDb
   comp.ratio.value = p.compRatio
   comp.knee.value = 6
-  comp.attack.value = 0.005
-  comp.release.value = 0.15
+  comp.attack.value = p.compAttackMs / 1000
+  comp.release.value = p.compReleaseMs / 1000
+
+  const makeup = c.createGain()
+  makeup.gain.value = dbToLin(p.compMakeupDb)
 
   const fader = c.createGain()
   fader.gain.value = dbToLin(p.faderDb)
@@ -138,17 +164,20 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const analyser = c.createAnalyser()
   analyser.fftSize = 2048
 
-  // Spatial section: neutral by default (center, full dry, no send) so the
-  // desk sounds identical to the pre-stage build until positions are pushed.
   const panner = c.createStereoPanner()
+  panner.pan.value = clamp(p.pan, -1, 1)
   const dryGain = c.createGain()
   const sendGain = c.createGain()
   sendGain.gain.value = 0
 
   input.connect(hpf)
-  hpf.connect(eq)
-  eq.connect(comp)
-  comp.connect(fader)
+  hpf.connect(eqLow)
+  eqLow.connect(eqLoMid)
+  eqLoMid.connect(eqHiMid)
+  eqHiMid.connect(eqHigh)
+  eqHigh.connect(comp)
+  comp.connect(makeup)
+  makeup.connect(fader)
   fader.connect(analyser)
   analyser.connect(panner)
   panner.connect(dryGain)
@@ -159,70 +188,98 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   channelNodes.set(cfg.id, {
     input,
     hpf,
-    eq,
+    eqLow,
+    eqLoMid,
+    eqHiMid,
+    eqHigh,
     comp,
+    makeup,
     fader,
     analyser,
     panner,
     dryGain,
     sendGain,
+    knobPan: p.pan,
+    stagePan: 0,
     buffer: null,
     source: null,
   })
 }
 
-/** Try real files from /public/stems/ first; fall back to the synth stem. */
-async function loadBuffer(c: AudioContext, cfg: ChannelConfig): Promise<AudioBuffer> {
-  for (const file of cfg.source.files) {
+/** Combine the desk pan knob with the (weaker) stage-position pan. */
+function applyPan(nodes: ChannelNodes): void {
+  ramp(nodes.panner.pan, clamp(nodes.knobPan + nodes.stagePan * STAGE_PAN_WEIGHT, -1, 1))
+}
+
+/** Try real files from /public/stems/ first; fall back to the synth build. */
+async function loadBuffer(c: AudioContext, instrumentId: string): Promise<AudioBuffer | null> {
+  for (const ext of ['wav', 'mp3']) {
     try {
-      const res = await fetch(`/stems/${file}`)
+      const res = await fetch(`/stems/${instrumentId}.${ext}`)
       const type = res.headers.get('content-type') ?? ''
       if (!res.ok || type.includes('text/html')) continue
       const bytes = await res.arrayBuffer()
-      const buf = await c.decodeAudioData(bytes)
-      engineState.stemSources[cfg.id] = 'file'
-      return buf
+      return await c.decodeAudioData(bytes)
     } catch {
       // Missing or undecodable — try the next candidate.
     }
   }
-  engineState.stemSources[cfg.id] = 'synth'
-  // Never hardcode a sample rate: render at whatever the live context runs at.
-  return renderSynthStem(cfg.source.synth, c.sampleRate)
+  return null
 }
 
-async function loadAllBuffers(c: AudioContext, configs: ChannelConfig[]): Promise<void> {
-  const buffers = await Promise.all(configs.map((cfg) => loadBuffer(c, cfg)))
-  configs.forEach((cfg, i) => {
-    const nodes = channelNodes.get(cfg.id)
-    if (nodes) nodes.buffer = buffers[i] ?? null
-  })
-  buffersLoaded = true
-}
-
-function startSources(c: AudioContext, looping: boolean): void {
-  stoppingManually = false
-  const startAt = c.currentTime + 0.05 // one shared start time keeps stems in sync
-  let live = 0
-
-  for (const nodes of channelNodes.values()) {
-    if (!nodes.buffer) continue
-    const src = c.createBufferSource()
-    src.buffer = nodes.buffer
-    src.loop = looping
-    src.connect(nodes.input)
-    src.onended = () => {
-      live--
-      if (live === 0 && !stoppingManually) {
-        sourcesActive = false
-        onAllEnded?.()
-      }
-    }
-    src.start(startAt)
-    nodes.source = src
-    live++
+async function loadChannelBuffer(c: AudioContext, cfg: ChannelConfig): Promise<void> {
+  const nodes = channelNodes.get(cfg.id)
+  if (!nodes || !cfg.instrumentId) return
+  const fileBuf = await loadBuffer(c, cfg.instrumentId)
+  if (fileBuf) {
+    nodes.buffer = fileBuf
+    engineState.stemSources[cfg.id] = 'file'
+  } else {
+    // Never hardcode a sample rate: render at whatever the live context runs at.
+    nodes.buffer = await renderInstrument(cfg.instrumentId, c.sampleRate)
+    engineState.stemSources[cfg.id] = 'synth'
   }
-  sourcesActive = live > 0
+}
+
+function startSource(c: AudioContext, nodes: ChannelNodes, when: number, offset: number): void {
+  if (!nodes.buffer) return
+  const src = c.createBufferSource()
+  src.buffer = nodes.buffer
+  src.loop = looping
+  src.connect(nodes.input)
+  src.onended = () => {
+    liveSources.delete(src)
+    if (nodes.source === src) nodes.source = null
+    if (liveSources.size === 0) {
+      sourcesActive = false
+      onAllEnded?.()
+    }
+  }
+  src.start(when, offset % nodes.buffer.duration)
+  nodes.source = src
+  liveSources.add(src)
+}
+
+function startAllSources(c: AudioContext): void {
+  loopStartedAt = c.currentTime + 0.05 // one shared start time keeps stems in sync
+  for (const nodes of channelNodes.values()) {
+    if (nodes.buffer) startSource(c, nodes, loopStartedAt, 0)
+  }
+  sourcesActive = liveSources.size > 0
+}
+
+/** Stop one channel's source without triggering the all-ended callback. */
+function stopSource(nodes: ChannelNodes): void {
+  if (!nodes.source) return
+  const src = nodes.source
+  src.onended = null
+  liveSources.delete(src)
+  try {
+    src.stop()
+  } catch {
+    // never started / already stopped
+  }
+  nodes.source = null
 }
 
 /**
@@ -232,11 +289,12 @@ function startSources(c: AudioContext, looping: boolean): void {
 export async function startPlayback(
   configs: ChannelConfig[],
   masterFaderDb: number,
-  looping: boolean,
+  loop: boolean,
   handleAllEnded: () => void,
 ): Promise<void> {
   const c = ensureContext()
   onAllEnded = handleAllEnded
+  looping = loop
   await c.resume()
 
   if (!engineState.built) {
@@ -247,8 +305,13 @@ export async function startPlayback(
     updateMixGains(configs)
   }
 
-  if (!buffersLoaded) await loadAllBuffers(c, configs)
-  if (!sourcesActive) startSources(c, looping)
+  const missing = configs.filter(
+    (cfg) => cfg.instrumentId && !channelNodes.get(cfg.id)?.buffer,
+  )
+  if (missing.length > 0) {
+    await Promise.all(missing.map((cfg) => loadChannelBuffer(c, cfg)))
+  }
+  if (!sourcesActive) startAllSources(c)
 }
 
 /** Pause by suspending the context — cheap, and playback position is kept. */
@@ -256,9 +319,35 @@ export async function pause(): Promise<void> {
   if (ctx) await ctx.suspend()
 }
 
-export function setLooping(looping: boolean): void {
+export function setLooping(loop: boolean): void {
+  looping = loop
   for (const nodes of channelNodes.values()) {
-    if (nodes.source) nodes.source.loop = looping
+    if (nodes.source) nodes.source.loop = loop
+  }
+}
+
+/**
+ * Plug an instrument into a channel (or unplug with null). If playback is
+ * running, the new source starts loop-aligned with everything else.
+ */
+export async function plugChannel(
+  channelId: string,
+  instrumentId: string | null,
+): Promise<void> {
+  const nodes = channelNodes.get(channelId)
+  if (!nodes || !engineState.built || !ctx) return
+  stopSource(nodes)
+  nodes.buffer = null
+  delete engineState.stemSources[channelId]
+  if (!instrumentId || !getInstrument(instrumentId)) return
+
+  const cfg = { id: channelId, instrumentId } as ChannelConfig
+  await loadChannelBuffer(ctx, cfg)
+  // Someone re-plugged while we were rendering — that call wins.
+  if (!nodes.buffer) return
+  if (sourcesActive) {
+    const offset = Math.max(0, ctx.currentTime - loopStartedAt)
+    startSource(ctx, nodes, ctx.currentTime, offset)
   }
 }
 
@@ -273,17 +362,54 @@ export function setChannelParam(id: string, key: NumericParamKey, value: number)
     case 'hpfHz':
       ramp(nodes.hpf.frequency, value)
       break
-    case 'eqHz':
-      ramp(nodes.eq.frequency, value)
+    case 'eqLowFreq':
+      ramp(nodes.eqLow.frequency, value)
       break
-    case 'eqGainDb':
-      ramp(nodes.eq.gain, value)
+    case 'eqLowGainDb':
+      ramp(nodes.eqLow.gain, value)
+      break
+    case 'eqLoMidFreq':
+      ramp(nodes.eqLoMid.frequency, value)
+      break
+    case 'eqLoMidGainDb':
+      ramp(nodes.eqLoMid.gain, value)
+      break
+    case 'eqLoMidQ':
+      ramp(nodes.eqLoMid.Q, value)
+      break
+    case 'eqHiMidFreq':
+      ramp(nodes.eqHiMid.frequency, value)
+      break
+    case 'eqHiMidGainDb':
+      ramp(nodes.eqHiMid.gain, value)
+      break
+    case 'eqHiMidQ':
+      ramp(nodes.eqHiMid.Q, value)
+      break
+    case 'eqHighFreq':
+      ramp(nodes.eqHigh.frequency, value)
+      break
+    case 'eqHighGainDb':
+      ramp(nodes.eqHigh.gain, value)
       break
     case 'compThresholdDb':
       ramp(nodes.comp.threshold, value)
       break
     case 'compRatio':
       ramp(nodes.comp.ratio, value)
+      break
+    case 'compAttackMs':
+      ramp(nodes.comp.attack, value / 1000)
+      break
+    case 'compReleaseMs':
+      ramp(nodes.comp.release, value / 1000)
+      break
+    case 'compMakeupDb':
+      ramp(nodes.makeup.gain, dbToLin(value))
+      break
+    case 'pan':
+      nodes.knobPan = clamp(value, -1, 1)
+      applyPan(nodes)
       break
     case 'faderDb':
       // Fader level depends on mute/solo state — handled by updateMixGains.
@@ -340,7 +466,8 @@ export function setSpatial(
 ): void {
   const nodes = channelNodes.get(id)
   if (!nodes) return
-  ramp(nodes.panner.pan, s.pan)
+  nodes.stagePan = s.pan
+  applyPan(nodes)
   ramp(nodes.dryGain.gain, s.dry)
   ramp(nodes.sendGain.gain, s.send)
 }

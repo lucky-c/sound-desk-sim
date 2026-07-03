@@ -163,15 +163,16 @@ onMounted(() => {
 
   interface Performer {
     id: string
+    instrumentId: string
     group: THREE.Group
     ringMat: THREE.MeshStandardMaterial
     body: THREE.Mesh
   }
-  const performers: Performer[] = []
-  const pickable: THREE.Object3D[] = []
+  const performers = new Map<string, Performer>()
+  let pickable: THREE.Object3D[] = []
 
-  for (const ch of mixer.channels) {
-    const color = new THREE.Color(ch.color)
+  function addPerformer(id: string, instrumentId: string, name: string, colorHex: string) {
+    const color = new THREE.Color(colorHex)
     const group = new THREE.Group()
 
     const body = new THREE.Mesh(
@@ -179,7 +180,7 @@ onMounted(() => {
       mat({ color, roughness: 0.45 }),
     )
     body.position.y = 1.0
-    body.userData.channelId = ch.id
+    body.userData.channelId = id
     pickable.push(body)
     group.add(body)
 
@@ -192,26 +193,52 @@ onMounted(() => {
     })
     const ring = new THREE.Mesh(track(new THREE.CylinderGeometry(0.7, 0.7, 0.06, 28)), ringMat)
     ring.position.y = 0.03
-    ring.userData.channelId = ch.id
+    ring.userData.channelId = id
     pickable.push(ring)
     group.add(ring)
 
-    const label = labelSprite(ch.name, ch.color)
+    const label = labelSprite(name, colorHex)
     label.position.y = 2.3
     group.add(label)
 
     scene.add(group)
-    performers.push({ id: ch.id, group, ringMat, body })
+    performers.set(id, { id, instrumentId, group, ringMat, body })
+  }
+
+  function removePerformer(id: string) {
+    const p = performers.get(id)
+    if (!p) return
+    scene.remove(p.group)
+    pickable = pickable.filter((o) => o.userData.channelId !== id)
+    performers.delete(id)
+  }
+
+  /** Add/remove/swap performers to mirror the console's plugging. */
+  function syncPerformers() {
+    for (const ch of mixer.channels) {
+      const existing = performers.get(ch.id)
+      if (ch.instrumentId && existing?.instrumentId !== ch.instrumentId) {
+        if (existing) removePerformer(ch.id)
+        addPerformer(ch.id, ch.instrumentId, ch.name, ch.color)
+      } else if (!ch.instrumentId && existing) {
+        removePerformer(ch.id)
+      }
+    }
+    syncPositions()
   }
 
   function syncPositions() {
-    for (const p of performers) {
+    for (const p of performers.values()) {
       const pos = stage.positions[p.id]
       if (pos) p.group.position.set(pos.x, 0, pos.z)
     }
   }
-  syncPositions()
+  syncPerformers()
   const stopPosSync = watch(() => JSON.stringify(stage.positions), syncPositions)
+  const stopPlugSync = watch(
+    () => mixer.channels.map((ch) => `${ch.id}:${ch.instrumentId ?? ''}`).join(','),
+    syncPerformers,
+  )
 
   // ---- drag interaction ----
   const raycaster = new THREE.Raycaster()
@@ -291,7 +318,7 @@ onMounted(() => {
   let raf = 0
   function loop() {
     // Performer rings pulse with their channel's live level.
-    for (const p of performers) {
+    for (const p of performers.values()) {
       const peak = meters.channels[p.id]?.peak ?? 0
       const norm = clamp((linToDb(peak) + 60) / 60, 0, 1)
       p.ringMat.emissiveIntensity = 0.25 + norm * 1.6
@@ -307,7 +334,7 @@ onMounted(() => {
   if (import.meta.env.DEV) {
     ;(window as unknown as Record<string, unknown>).__stage3d = {
       project(channelId: string) {
-        const p = performers.find((x) => x.id === channelId)
+        const p = performers.get(channelId)
         if (!p) return null
         const v = new THREE.Vector3()
         p.body.getWorldPosition(v)
@@ -324,6 +351,7 @@ onMounted(() => {
   onUnmounted(() => {
     cancelAnimationFrame(raf)
     stopPosSync()
+    stopPlugSync()
     stopRoomSync()
     ro.disconnect()
     renderer.domElement.removeEventListener('pointerdown', onPointerDown)

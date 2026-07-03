@@ -15,28 +15,42 @@ import { useMixerStore } from './mixer'
 /** Debounce for room-IR re-renders while the size slider moves. */
 const IR_DEBOUNCE_MS = 250
 
-/** Default band layout; unknown (data-added) channels get spread across stage. */
-const DEFAULT_POSITIONS: Record<string, StagePosition> = {
-  kick: { x: 0, z: -3 }, // drummer, back center
-  bass: { x: -2.5, z: -1.5 }, // bassist, mid left
-  pad: { x: 2.5, z: 0.5 }, // pad/vox, front right
+/** Where each instrument naturally stands when plugged in. */
+const INSTRUMENT_POSITIONS: Record<string, StagePosition> = {
+  kick: { x: 0, z: -3 },
+  snare: { x: 0.8, z: -3 },
+  hats: { x: -0.8, z: -3 },
+  shaker: { x: -1.8, z: -2.6 },
+  cowbell: { x: 1.8, z: -3.2 },
+  bass: { x: -2.6, z: -1.8 },
+  guitar: { x: 3.2, z: -1 },
+  'guitar-lead': { x: 2.6, z: 0.6 },
+  keys: { x: -3.2, z: -0.4 },
+  pad: { x: 3.9, z: -2.6 },
+  brass: { x: 1.4, z: -2 },
+  lead: { x: 0, z: 0.9 },
 }
 
 /**
  * Stage state: where each performer stands and what room they play in.
  * Purely additive over the mixer — positions and room feed the engine's
  * spatial section (pan / distance / reverb) through ramped setters.
+ * Positions are keyed by channel slot; a slot gets its instrument's natural
+ * spot when something is plugged into it.
  */
 export const useStageStore = defineStore('stage', () => {
   const mixer = useMixerStore()
 
   const positions = reactive<Record<string, StagePosition>>({})
-  mixer.channels.forEach((ch, i) => {
-    positions[ch.id] = DEFAULT_POSITIONS[ch.id] ?? {
-      x: -3 + (i * 6) / Math.max(mixer.channels.length - 1, 1),
-      z: -1,
-    }
-  })
+
+  function defaultPositionFor(instrumentId: string, index: number): StagePosition {
+    return (
+      INSTRUMENT_POSITIONS[instrumentId] ?? {
+        x: -4 + (index % 8),
+        z: -1.5,
+      }
+    )
+  }
 
   const roomPreset = ref<RoomPreset>('club')
   const roomSize = ref(1)
@@ -53,6 +67,25 @@ export const useStageStore = defineStore('stage', () => {
     }
     pushSpatial(id)
   }
+
+  // Give newly-plugged channels their instrument's natural stage spot —
+  // without touching positions the user already moved.
+  const lastPlug: Record<string, string | null> = {}
+  watch(
+    () => mixer.channels.map((ch) => `${ch.id}:${ch.instrumentId ?? ''}`).join(','),
+    () => {
+      mixer.channels.forEach((ch, i) => {
+        if (ch.instrumentId === (lastPlug[ch.id] ?? null)) return
+        lastPlug[ch.id] = ch.instrumentId
+        if (ch.instrumentId) {
+          setPosition(ch.id, defaultPositionFor(ch.instrumentId, i))
+        } else {
+          delete positions[ch.id]
+        }
+      })
+    },
+    { immediate: true },
+  )
 
   let irTimer: ReturnType<typeof setTimeout> | undefined
   let irGeneration = 0

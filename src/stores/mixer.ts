@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import type {
   ChannelConfig,
+  ChannelParams,
   MasterState,
   MixSnapshot,
   NumericParamKey,
   TransportState,
 } from '../types'
-import { NUMERIC_PARAM_KEYS } from '../types'
+import { NUMERIC_PARAM_KEYS, neutralParams } from '../types'
+import { getInstrument } from '../audio/instruments'
 import * as engine from '../audio/engine'
 
 /**
@@ -14,63 +16,46 @@ import * as engine from '../audio/engine'
  * through these actions; each action mirrors the change into the engine,
  * which applies it with AudioParam automation.
  *
- * Channels are data: add an entry here and the mixer grows a strip —
- * no component changes needed.
+ * The console has 16 fixed channel slots (M32R-style). Channels 1–4 come
+ * pre-plugged; the rest are empty until the user plugs an instrument.
  */
+
+export const CHANNEL_COUNT = 16
+
+export const DEFAULT_PLUGGING: Record<string, string> = {
+  ch01: 'kick',
+  ch02: 'snare',
+  ch03: 'bass',
+  ch04: 'keys',
+}
+
+/** Strip presets for the default-plugged channels. */
+const DEFAULT_PARAM_TWEAKS: Record<string, Partial<ChannelParams>> = {
+  ch01: { hpfHz: 25, compThresholdDb: -18, compRatio: 4, faderDb: -6 },
+  ch02: { hpfHz: 80, compThresholdDb: -22, compRatio: 3, faderDb: -9 },
+  ch03: { hpfHz: 30, compThresholdDb: -24, compRatio: 4, faderDb: -8 },
+  ch04: { hpfHz: 100, faderDb: -10 },
+}
+
+function slotId(num: number): string {
+  return `ch${String(num).padStart(2, '0')}`
+}
+
 function defaultChannels(): ChannelConfig[] {
-  return [
-    {
-      id: 'kick',
-      name: 'Kick',
-      color: '#f59e0b',
-      source: { synth: 'kick', files: ['kick.wav', 'kick.mp3'] },
-      params: {
-        gainDb: 0,
-        hpfHz: 30,
-        eqHz: 80,
-        eqGainDb: 0,
-        compThresholdDb: -18,
-        compRatio: 4,
-        faderDb: -6,
-        mute: false,
-        solo: false,
-      },
-    },
-    {
-      id: 'bass',
-      name: 'Bass',
-      color: '#22d3ee',
-      source: { synth: 'bass', files: ['bass.wav', 'bass.mp3'] },
-      params: {
-        gainDb: 0,
-        hpfHz: 40,
-        eqHz: 250,
-        eqGainDb: 0,
-        compThresholdDb: -24,
-        compRatio: 4,
-        faderDb: -8,
-        mute: false,
-        solo: false,
-      },
-    },
-    {
-      id: 'pad',
-      name: 'Pad / Vox',
-      color: '#a78bfa',
-      source: { synth: 'pad', files: ['pad.wav', 'pad.mp3'] },
-      params: {
-        gainDb: 0,
-        hpfHz: 150,
-        eqHz: 2000,
-        eqGainDb: 0,
-        compThresholdDb: -30,
-        compRatio: 3,
-        faderDb: -10,
-        mute: false,
-        solo: false,
-      },
-    },
-  ]
+  return Array.from({ length: CHANNEL_COUNT }, (_, i) => {
+    const num = i + 1
+    const id = slotId(num)
+    const instrumentId = DEFAULT_PLUGGING[id] ?? null
+    const inst = getInstrument(instrumentId)
+    return {
+      id,
+      num,
+      instrumentId,
+      name: inst ? inst.name : `Ch ${num}`,
+      color: inst ? inst.color : '#71717a',
+      params: { ...neutralParams(), ...DEFAULT_PARAM_TWEAKS[id] },
+    }
+  })
 }
 
 /** The out-of-the-box mix as a snapshot — the base challenges build on. */
@@ -98,11 +83,47 @@ export const useMixerStore = defineStore('mixer', {
 
   getters: {
     anySolo: (state) => state.channels.some((ch) => ch.params.solo),
+    pluggedChannels: (state) => state.channels.filter((ch) => ch.instrumentId),
+    usedInstrumentIds: (state) =>
+      new Set(state.channels.map((ch) => ch.instrumentId).filter(Boolean) as string[]),
   },
 
   actions: {
     channel(id: string): ChannelConfig | undefined {
       return this.channels.find((ch) => ch.id === id)
+    },
+
+    /** Plug an instrument into a slot (null unplugs). One channel per instrument. */
+    plugInstrument(channelId: string, instrumentId: string | null) {
+      const ch = this.channel(channelId)
+      if (!ch) return
+      if (
+        instrumentId &&
+        this.channels.some((c) => c.id !== channelId && c.instrumentId === instrumentId)
+      ) {
+        return // already plugged elsewhere
+      }
+      const inst = getInstrument(instrumentId)
+      ch.instrumentId = inst ? inst.id : null
+      ch.name = inst ? inst.name : `Ch ${ch.num}`
+      ch.color = inst ? inst.color : '#71717a'
+      void engine.plugChannel(channelId, ch.instrumentId)
+    },
+
+    /** Current plugging as plain data (for save/restore around challenges). */
+    plugMap(): Record<string, string | null> {
+      return Object.fromEntries(this.channels.map((ch) => [ch.id, ch.instrumentId]))
+    },
+
+    applyPlugMap(map: Record<string, string | null>) {
+      for (const ch of this.channels) {
+        const want = map[ch.id] ?? null
+        if (ch.instrumentId !== want) this.plugInstrument(ch.id, want)
+      }
+    },
+
+    resetPluggingToDefault() {
+      this.applyPlugMap(DEFAULT_PLUGGING)
     },
 
     setParam(id: string, key: NumericParamKey, value: number) {

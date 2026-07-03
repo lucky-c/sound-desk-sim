@@ -4,15 +4,18 @@ import { useMixerStore } from '../stores/mixer'
 import { useChallengeStore } from '../stores/challenges'
 import { useMeters } from '../composables/useMeters'
 import { clamp, linToDb } from '../lib/units'
+import { INSTRUMENTS } from '../audio/instruments'
+import type { ChannelConfig } from '../types'
 import ChannelStrip from './ChannelStrip.vue'
 import MasterStrip from './MasterStrip.vue'
 import ParamSlider from './ParamSlider.vue'
 import LevelMeter from './LevelMeter.vue'
 
 /**
- * The FOH console drawer: slides up over the stage view. The handle bar
- * (always visible) carries transport + master monitoring; the body shows a
- * compact strip per channel, each expandable to the full 2D strip.
+ * The FOH console drawer: a 16-channel M32R-style desk over the stage view.
+ * The handle bar (always visible) carries transport, master volume, and
+ * master monitoring; the body shows a compact strip per channel — empty
+ * slots offer an instrument picker; plugged slots expand to the full strip.
  */
 
 const mixer = useMixerStore()
@@ -32,6 +35,17 @@ function togglePlay() {
   if (mixer.transport.playing) void mixer.pause()
   // The Play click is the user gesture that resumes the AudioContext.
   else void mixer.play()
+}
+
+function availableFor(ch: ChannelConfig) {
+  return INSTRUMENTS.filter(
+    (inst) => inst.id === ch.instrumentId || !mixer.usedInstrumentIds.has(inst.id),
+  )
+}
+
+function onPlugSelect(ch: ChannelConfig, event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  mixer.plugInstrument(ch.id, value || null)
 }
 
 const masterPct = computed(
@@ -78,8 +92,18 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
         Loop {{ mixer.transport.looping ? 'on' : 'off' }}
       </button>
 
-      <!-- master monitoring -->
+      <!-- master volume + monitoring -->
       <div class="ml-auto flex items-center gap-3">
+        <div class="hidden w-36 sm:block">
+          <ParamSlider
+            label="Master"
+            unit="dB"
+            :min="-60"
+            :max="6"
+            :model-value="mixer.master.faderDb"
+            @update:model-value="mixer.setMasterFader($event)"
+          />
+        </div>
         <span
           class="flex items-center gap-1 text-[10px] font-semibold"
           :class="meters.master.clip ? 'text-red-400' : 'text-zinc-600'"
@@ -101,7 +125,7 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
           />
           LIM
         </span>
-        <div class="hidden h-1.5 w-28 overflow-hidden rounded-full bg-zinc-800 sm:block">
+        <div class="hidden h-1.5 w-24 overflow-hidden rounded-full bg-zinc-800 md:block">
           <div
             class="h-full transition-[width] duration-75 ease-linear"
             :class="masterPct > 95 ? 'bg-red-500' : masterPct > 80 ? 'bg-yellow-400' : 'bg-emerald-400'"
@@ -114,31 +138,57 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
     <!-- console body -->
     <div
       v-show="open"
-      class="max-h-[400px] overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-opacity"
+      class="max-h-[420px] overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-opacity"
       :class="frozen ? 'pointer-events-none opacity-50' : ''"
     >
-      <div class="flex items-end gap-2 overflow-x-auto p-2">
+      <div class="flex items-end gap-1.5 overflow-x-auto p-2">
         <div v-for="ch in mixer.channels" :key="ch.id" class="flex shrink-0 flex-col gap-1">
-          <button
-            class="self-start rounded bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700"
-            @click="expanded[ch.id] = !expanded[ch.id]"
-          >
-            {{ expanded[ch.id] ? '− less' : '+ EQ / comp' }}
-          </button>
+          <!-- slot header: expand + instrument picker -->
+          <div class="flex items-center gap-1">
+            <button
+              v-if="ch.instrumentId"
+              class="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700"
+              @click="expanded[ch.id] = !expanded[ch.id]"
+            >
+              {{ expanded[ch.id] ? '−' : '+' }}
+            </button>
+            <select
+              class="w-full min-w-0 rounded bg-zinc-800/80 px-1 py-0.5 text-[10px] text-zinc-400"
+              :value="ch.instrumentId ?? ''"
+              @change="onPlugSelect(ch, $event)"
+            >
+              <option value="">— empty —</option>
+              <option v-for="inst in availableFor(ch)" :key="inst.id" :value="inst.id">
+                {{ inst.name }}
+              </option>
+            </select>
+          </div>
 
-          <ChannelStrip v-if="expanded[ch.id]" :channel="ch" />
+          <ChannelStrip v-if="ch.instrumentId && expanded[ch.id]" :channel="ch" />
 
+          <!-- compact plugged strip -->
           <div
-            v-else
-            class="flex w-36 flex-col gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 p-2"
+            v-else-if="ch.instrumentId"
+            class="flex w-32 flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-2"
           >
-            <span class="text-xs font-semibold" :style="{ color: ch.color }">
+            <span class="truncate text-xs font-semibold" :style="{ color: ch.color }">
+              <span class="mr-1 text-[9px] text-zinc-600">{{ ch.num }}</span>
               {{ ch.name }}
             </span>
-            <div class="flex items-end gap-2">
+            <ParamSlider
+              label="Pan"
+              unit=""
+              :min="-1"
+              :max="1"
+              :step="0.01"
+              :decimals="2"
+              :model-value="ch.params.pan"
+              @update:model-value="mixer.setParam(ch.id, 'pan', $event)"
+            />
+            <div class="flex items-end gap-1.5">
               <LevelMeter
                 :peak="meters.channels[ch.id]?.peak ?? 0"
-                size-class="h-16 w-2"
+                size-class="h-14 w-1.5"
               />
               <div class="min-w-0 flex-1">
                 <ParamSlider
@@ -149,9 +199,9 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
                   :model-value="ch.params.faderDb"
                   @update:model-value="mixer.setParam(ch.id, 'faderDb', $event)"
                 />
-                <div class="mt-1.5 flex gap-1.5">
+                <div class="mt-1 flex gap-1">
                   <button
-                    class="flex-1 rounded px-1.5 py-0.5 text-[11px] font-bold transition-colors"
+                    class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
                     :class="
                       ch.params.mute
                         ? 'bg-red-600 text-white'
@@ -162,7 +212,7 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
                     M
                   </button>
                   <button
-                    class="flex-1 rounded px-1.5 py-0.5 text-[11px] font-bold transition-colors"
+                    class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
                     :class="
                       ch.params.solo
                         ? 'bg-yellow-500 text-black'
@@ -175,6 +225,15 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- empty slot -->
+          <div
+            v-else
+            class="flex h-[104px] w-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-800 bg-zinc-900/40 p-2"
+          >
+            <span class="text-[10px] font-semibold text-zinc-600">Ch {{ ch.num }}</span>
+            <span class="text-[9px] text-zinc-700">plug an instrument ↑</span>
           </div>
         </div>
 
@@ -195,10 +254,10 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
           >
             <span class="text-xs font-semibold text-emerald-400">Master</span>
             <div class="flex items-end gap-2">
-              <LevelMeter :peak="meters.master.peak" size-class="h-16 w-2" />
+              <LevelMeter :peak="meters.master.peak" size-class="h-14 w-2" />
               <div class="min-w-0 flex-1">
                 <ParamSlider
-                  label="Fader"
+                  label="Volume"
                   unit="dB"
                   :min="-60"
                   :max="6"
