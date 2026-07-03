@@ -8,7 +8,7 @@ import MasterStrip from './components/MasterStrip.vue'
 import ChallengePanel from './components/ChallengePanel.vue'
 
 // Lazy-loaded so three.js is only fetched when the 3D view is opened.
-const Console3D = defineAsyncComponent(() => import('./components/Console3D.vue'))
+const Stage3D = defineAsyncComponent(() => import('./components/Stage3D.vue'))
 
 const store = useMixerStore()
 const challengeStore = useChallengeStore()
@@ -47,7 +47,7 @@ if (import.meta.env.DEV) {
             :class="viewMode === '3d' ? 'bg-zinc-200 text-zinc-900' : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800'"
             @click="viewMode = '3d'"
           >
-            3D desk
+            3D stage
           </button>
         </div>
       </header>
@@ -68,7 +68,7 @@ if (import.meta.env.DEV) {
               />
               <MasterStrip />
             </div>
-            <Console3D v-else />
+            <Stage3D v-else />
           </main>
         </div>
 
@@ -77,8 +77,9 @@ if (import.meta.env.DEV) {
 
       <footer class="text-xs text-zinc-600">
         Signal chain per channel: input gain → high-pass → peaking EQ →
-        compressor → fader → master bus → safety limiter. Drop your own stems
-        into <code class="text-zinc-500">/public/stems/</code> (see its README).
+        compressor → fader → stage position (pan · distance · room send) →
+        master bus → safety limiter. Drop your own stems into
+        <code class="text-zinc-500">/public/stems/</code> (see its README).
       </footer>
     </div>
   </div>

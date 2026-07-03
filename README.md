@@ -75,24 +75,33 @@ picker. The shape (see [`src/challenges/types.ts`](src/challenges/types.ts)):
 ([`src/challenges/validate.ts`](src/challenges/validate.ts)) is a pure
 function — run its tests with `bun test`.
 
-## 3D console
+## 3D stage
 
-The **3D desk** toggle (top right) swaps the 2D strips for an interactive
-Three.js console — drag faders and knobs vertically, click the M/S buttons,
-orbit and zoom the camera. It is a pure visual skin: both desks read and
-write the same Pinia store, so meters, challenges, and A/B comparison work
-identically in either view, and you can switch mid-session without losing
-anything. Three.js is lazy-loaded, so the 2D app pays no bundle cost for it.
+The **3D stage** toggle (top right) opens the venue: each channel is a
+performer you can drag around the stage, heard from the fixed FOH (front of
+house) mix position — the green marker out in the audience. Position is
+audible: left/right maps to stereo pan, distance drops the level and adds
+room sound. Pick a venue (club / hall / open air) and scale it with the
+room-size slider — the reverb is a synthesized impulse response, re-rendered
+live, so bigger rooms genuinely ring longer. Under the hood each channel
+gains a post-fader spatial section (`StereoPanner → distance gain` dry path
+plus a send into a shared `Convolver` room bus) feeding the same master —
+the channel-strip order is unchanged and the safety limiter still guards
+everything, reverb included. Stage state lives in its own Pinia store
+(`src/stores/stage.ts`); the spatial math is pure and unit-tested
+(`src/audio/spatial.ts`). Three.js is lazy-loaded, so the 2D app pays no
+bundle cost.
 
 ## Current scope
 
 This build covers the working mixer, the educational layer, and the 3D
-console: data-driven channel strips from a Pinia store, a per-channel chain
+stage: data-driven channel strips from a Pinia store, a per-channel chain
 of built-in Web Audio nodes, click-free parameter automation, per-channel +
 master metering with clip detection, a brickwall safety limiter on the
 master, synth/file stems, transport (play/pause/loop), PWA install support,
 the data-driven challenge system with tolerance-band validation, directional
-feedback, hints, and A/B comparison, and the interactive 3D view.
+feedback, hints, and A/B comparison, and the spatial stage view with
+draggable performers and room simulation.
 
 Roadmap (deliberately not built yet):
 

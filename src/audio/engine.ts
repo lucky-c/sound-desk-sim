@@ -8,7 +8,14 @@ import { renderSynthStem } from './synthStems'
  *
  * Per-channel chain (built-in nodes only, strictly in this order):
  *   GainNode (input) → BiquadFilterNode (highpass) → BiquadFilterNode (peaking)
- *   → DynamicsCompressorNode → GainNode (fader) → master bus
+ *   → DynamicsCompressorNode → GainNode (fader) → spatial section → master bus
+ *
+ * Spatial section (stage positioning, after the strip so it never changes
+ * the strip's node order):
+ *   analyser → StereoPannerNode (pan) → GainNode (distance) → master bus  [dry]
+ *   analyser → GainNode (reverb send) → shared room bus                   [wet]
+ *   room bus: GainNode → ConvolverNode (synthesized IR) → GainNode (wet)
+ *   → master bus
  *
  * Master bus:
  *   masterFader (GainNode) → masterAnalyser (pre-limiter metering/clip tap)
@@ -29,6 +36,9 @@ interface ChannelNodes {
   comp: DynamicsCompressorNode
   fader: GainNode
   analyser: AnalyserNode
+  panner: StereoPannerNode
+  dryGain: GainNode
+  sendGain: GainNode
   buffer: AudioBuffer | null
   source: AudioBufferSourceNode | null
 }
@@ -40,6 +50,10 @@ let ctx: AudioContext | null = null
 let masterFader: GainNode | null = null
 let masterAnalyser: AnalyserNode | null = null
 let limiter: DynamicsCompressorNode | null = null
+let reverbInput: GainNode | null = null
+let convolver: ConvolverNode | null = null
+let reverbWet: GainNode | null = null
+let currentWet = 0
 const channelNodes = new Map<string, ChannelNodes>()
 
 let buffersLoaded = false
@@ -81,6 +95,17 @@ function buildMaster(c: AudioContext): void {
   masterFader.connect(masterAnalyser)
   masterAnalyser.connect(limiter)
   limiter.connect(c.destination)
+
+  // Shared room-reverb bus. Feeds the master PRE-limiter, so the safety
+  // limiter also protects against reverb build-up. Silent until a room
+  // impulse response is applied (setRoom).
+  reverbInput = c.createGain()
+  convolver = c.createConvolver()
+  reverbWet = c.createGain()
+  reverbWet.gain.value = 0
+  reverbInput.connect(convolver)
+  convolver.connect(reverbWet)
+  reverbWet.connect(masterFader)
 }
 
 function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
@@ -113,12 +138,23 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const analyser = c.createAnalyser()
   analyser.fftSize = 2048
 
+  // Spatial section: neutral by default (center, full dry, no send) so the
+  // desk sounds identical to the pre-stage build until positions are pushed.
+  const panner = c.createStereoPanner()
+  const dryGain = c.createGain()
+  const sendGain = c.createGain()
+  sendGain.gain.value = 0
+
   input.connect(hpf)
   hpf.connect(eq)
   eq.connect(comp)
   comp.connect(fader)
   fader.connect(analyser)
-  analyser.connect(masterFader!)
+  analyser.connect(panner)
+  panner.connect(dryGain)
+  dryGain.connect(masterFader!)
+  analyser.connect(sendGain)
+  sendGain.connect(reverbInput!)
 
   channelNodes.set(cfg.id, {
     input,
@@ -127,6 +163,9 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
     comp,
     fader,
     analyser,
+    panner,
+    dryGain,
+    sendGain,
     buffer: null,
     source: null,
   })
@@ -285,4 +324,38 @@ export function getMasterAnalyser(): AnalyserNode | null {
 /** Current limiter gain reduction in dB (negative = limiting). */
 export function getLimiterReductionDb(): number {
   return limiter ? limiter.reduction : 0
+}
+
+// ---- stage spatialization ----
+
+/** Sample rate of the live context (for offline IR rendering), if built. */
+export function getSampleRate(): number | null {
+  return ctx ? ctx.sampleRate : null
+}
+
+/** Apply a channel's stage position as pan / distance / reverb-send (smoothed). */
+export function setSpatial(
+  id: string,
+  s: { pan: number; dry: number; send: number },
+): void {
+  const nodes = channelNodes.get(id)
+  if (!nodes) return
+  ramp(nodes.panner.pan, s.pan)
+  ramp(nodes.dryGain.gain, s.dry)
+  ramp(nodes.sendGain.gain, s.send)
+}
+
+/**
+ * Swap the room impulse response. The wet gain is ducked around the buffer
+ * swap (a ConvolverNode buffer change is instantaneous) to avoid a click.
+ */
+export function setRoom(ir: AudioBuffer, wet: number): void {
+  if (!ctx || !convolver || !reverbWet) return
+  currentWet = wet
+  reverbWet.gain.setTargetAtTime(0, ctx.currentTime, 0.01)
+  setTimeout(() => {
+    if (!ctx || !convolver || !reverbWet) return
+    convolver.buffer = ir
+    reverbWet.gain.setTargetAtTime(currentWet, ctx.currentTime, 0.05)
+  }, 60)
 }
