@@ -75,22 +75,32 @@ picker. The shape (see [`src/challenges/types.ts`](src/challenges/types.ts)):
 ([`src/challenges/validate.ts`](src/challenges/validate.ts)) is a pure
 function — run its tests with `bun test`.
 
-## Current scope: Phase 1–3
+## 3D console
 
-This build covers the working mixer plus the educational layer: data-driven
-channel strips from a Pinia store, a per-channel chain of built-in Web Audio
-nodes, click-free parameter automation, per-channel + master metering with
-clip detection, a brickwall safety limiter on the master, synth/file stems,
-transport (play/pause/loop), PWA install support, and the data-driven
-challenge system with tolerance-band validation, directional feedback, hints,
-and A/B comparison.
+The **3D desk** toggle (top right) swaps the 2D strips for an interactive
+Three.js console — drag faders and knobs vertically, click the M/S buttons,
+orbit and zoom the camera. It is a pure visual skin: both desks read and
+write the same Pinia store, so meters, challenges, and A/B comparison work
+identically in either view, and you can switch mid-session without losing
+anything. Three.js is lazy-loaded, so the 2D app pays no bundle cost for it.
+
+## Current scope
+
+This build covers the working mixer, the educational layer, and the 3D
+console: data-driven channel strips from a Pinia store, a per-channel chain
+of built-in Web Audio nodes, click-free parameter automation, per-channel +
+master metering with clip detection, a brickwall safety limiter on the
+master, synth/file stems, transport (play/pause/loop), PWA install support,
+the data-driven challenge system with tolerance-band validation, directional
+feedback, hints, and A/B comparison, and the interactive 3D view.
 
 Roadmap (deliberately not built yet):
 
 - **Custom DSP**: hand-written AudioWorklet processors (saturation, gate,
   custom compressor) as insert points in the chain.
-- **3D**: a spatial venue view (Three.js/TresJS) with the mix positioned in a
-  room.
+- **Backlog**: spectral/FFT analyzer view, Web MIDI control surface
+  (desktop/Android only — unsupported on Safari/iOS), WASM DSP only if
+  built-in + worklet precision ever proves insufficient.
 
 ### Where custom-DSP worklets will plug in
 
