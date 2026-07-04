@@ -11,7 +11,7 @@ const listeningToA = computed(() => store.abState === 'A')
 
 <template>
   <aside
-    class="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
+    class="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-950/90 p-4 backdrop-blur"
   >
     <!-- Picker (free-mix mode) -->
     <template v-if="!store.active">

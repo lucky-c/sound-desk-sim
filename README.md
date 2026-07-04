@@ -77,8 +77,11 @@ function — run its tests with `bun test`.
 
 ## The FOH view
 
-The app is one unified live view: you stand at FOH (front of house), looking
-at the stage, with the mixing console in front of you. Each channel is a
+The app is one fullscreen live view: the 3D stage fills the browser, and all
+other UI floats inside it — header chip and venue controls top-left, a
+toggleable Challenges panel on the right, and the console drawer along the
+bottom. You stand at FOH (front of house), looking at the stage, with the
+mixing console in front of you. Each channel is a
 performer you can drag around the stage, heard from the fixed FOH mix
 position — the green marker out in the audience. Position is audible:
 left/right maps to stereo pan, distance drops the level and adds room sound.

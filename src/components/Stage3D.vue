@@ -379,9 +379,9 @@ onMounted(() => {
       {{ dragReadout }}
     </div>
 
-    <!-- venue controls overlay -->
+    <!-- venue controls overlay (below the app's header chip) -->
     <div
-      class="absolute left-3 top-3 flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950/85 p-2.5 backdrop-blur"
+      class="absolute left-3 top-14 flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950/85 p-2.5 backdrop-blur"
       :title="roomHint"
     >
       <div class="flex overflow-hidden rounded-md border border-zinc-700 text-xs font-semibold">
@@ -412,14 +412,11 @@ onMounted(() => {
         />
       </div>
       <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>
+      <p class="max-w-44 border-t border-zinc-800 pt-1.5 text-[10px] leading-snug text-zinc-600">
+        Drag performers to place them — position changes pan, level, and room.
+        Green marker = FOH, your ears. Drag empty space to orbit · scroll to
+        zoom.
+      </p>
     </div>
-
-    <p
-      class="pointer-events-none absolute right-3 top-3 max-w-56 text-right text-[10px] leading-snug text-zinc-500"
-    >
-      Drag performers to place them — position changes pan, level, and room.
-      Green marker = FOH, your ears. Drag empty space to orbit · scroll to
-      zoom.
-    </p>
   </div>
 </template>
