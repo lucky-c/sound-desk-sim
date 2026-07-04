@@ -2,12 +2,13 @@ import { defineStore } from 'pinia'
 import type {
   ChannelConfig,
   ChannelParams,
+  DcaState,
   MasterState,
   MixSnapshot,
   NumericParamKey,
   TransportState,
 } from '../types'
-import { NUMERIC_PARAM_KEYS, neutralParams } from '../types'
+import { DCA_COUNT, NUMERIC_PARAM_KEYS, defaultDcas, neutralParams } from '../types'
 import { getInstrument } from '../audio/instruments'
 import * as engine from '../audio/engine'
 
@@ -65,13 +66,22 @@ export function defaultMixSnapshot(): MixSnapshot {
       defaultChannels().map((ch) => [ch.id, { ...ch.params }]),
     ),
     master: { faderDb: 0 },
+    dcas: defaultDcas(),
   }
+}
+
+/** An in-memory scene (M32-style snapshot): full mix + plugging + DCAs. */
+export interface Scene {
+  snap: MixSnapshot
+  plugging: Record<string, string | null>
 }
 
 interface MixerState {
   channels: ChannelConfig[]
   master: MasterState
   transport: TransportState
+  dcas: DcaState[]
+  scenes: (Scene | null)[]
 }
 
 export const useMixerStore = defineStore('mixer', {
@@ -79,6 +89,8 @@ export const useMixerStore = defineStore('mixer', {
     channels: defaultChannels(),
     master: { faderDb: 0 },
     transport: { playing: false, looping: true },
+    dcas: defaultDcas(),
+    scenes: Array.from({ length: 4 }, () => null),
   }),
 
   getters: {
@@ -130,11 +142,52 @@ export const useMixerStore = defineStore('mixer', {
       const ch = this.channel(id)
       if (!ch) return
       ch.params[key] = value
-      if (key === 'faderDb') {
+      if (key === 'faderDb' || key === 'dcaMask') {
         engine.updateMixGains(this.channels)
       } else {
         engine.setChannelParam(id, key, value)
       }
+    },
+
+    togglePolarity(id: string) {
+      const ch = this.channel(id)
+      if (!ch) return
+      ch.params.polarity = !ch.params.polarity
+      engine.setPolarity(id, ch.params.polarity)
+    },
+
+    toggleDcaAssign(id: string, dcaIndex: number) {
+      const ch = this.channel(id)
+      if (!ch || dcaIndex < 0 || dcaIndex >= DCA_COUNT) return
+      this.setParam(id, 'dcaMask', ch.params.dcaMask ^ (1 << dcaIndex))
+    },
+
+    setDcaFader(dcaIndex: number, db: number) {
+      const dca = this.dcas[dcaIndex]
+      if (!dca) return
+      dca.faderDb = db
+      engine.setDcas(this.dcas)
+      engine.updateMixGains(this.channels)
+    },
+
+    toggleDcaMute(dcaIndex: number) {
+      const dca = this.dcas[dcaIndex]
+      if (!dca) return
+      dca.mute = !dca.mute
+      engine.setDcas(this.dcas)
+      engine.updateMixGains(this.channels)
+    },
+
+    saveScene(slot: number) {
+      if (slot < 0 || slot >= this.scenes.length) return
+      this.scenes[slot] = { snap: this.snapshot(), plugging: this.plugMap() }
+    },
+
+    recallScene(slot: number) {
+      const scene = this.scenes[slot]
+      if (!scene) return
+      this.applyPlugMap(scene.plugging)
+      this.applySnapshot(scene.snap)
     },
 
     toggleMute(id: string) {
@@ -187,6 +240,7 @@ export const useMixerStore = defineStore('mixer', {
           this.channels.map((ch) => [ch.id, { ...ch.params }]),
         ),
         master: { ...this.master },
+        dcas: this.dcas.map((d) => ({ ...d })),
       }
     },
 
@@ -203,7 +257,12 @@ export const useMixerStore = defineStore('mixer', {
         }
         if (ch.params.mute !== params.mute) this.toggleMute(ch.id)
         if (ch.params.solo !== params.solo) this.toggleSolo(ch.id)
+        if (ch.params.polarity !== params.polarity) this.togglePolarity(ch.id)
       }
+      snap.dcas?.forEach((dca, i) => {
+        if (this.dcas[i]?.faderDb !== dca.faderDb) this.setDcaFader(i, dca.faderDb)
+        if (this.dcas[i]?.mute !== dca.mute) this.toggleDcaMute(i)
+      })
       this.setMasterFader(snap.master.faderDb)
     },
   },

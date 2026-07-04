@@ -31,12 +31,26 @@ function set(key: NumericParamKey, value: number) {
         <span class="mr-1 text-[10px] text-zinc-600">{{ channel.num }}</span>
         {{ channel.name }}
       </h2>
-      <span
-        v-if="stemSource"
-        class="rounded bg-zinc-800 px-1 text-[9px] uppercase tracking-wide text-zinc-500"
-        :title="stemSource === 'file' ? 'Playing a file from /stems/' : 'Playing the built-in synthesized stem'"
-        >{{ stemSource }}</span
-      >
+      <div class="flex items-center gap-1">
+        <button
+          class="rounded px-1.5 text-[11px] font-bold transition-colors"
+          :class="
+            channel.params.polarity
+              ? 'bg-amber-500 text-black'
+              : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
+          "
+          title="Polarity invert"
+          @click="store.togglePolarity(channel.id)"
+        >
+          ø
+        </button>
+        <span
+          v-if="stemSource"
+          class="rounded bg-zinc-800 px-1 text-[9px] uppercase tracking-wide text-zinc-500"
+          :title="stemSource === 'file' ? 'Playing a file from /stems/' : 'Playing the built-in synthesized stem'"
+          >{{ stemSource }}</span
+        >
+      </div>
     </div>
 
     <ParamSlider
@@ -57,6 +71,14 @@ function set(key: NumericParamKey, value: number) {
       :model-value="channel.params.hpfHz"
       @update:model-value="set('hpfHz', $event)"
     />
+
+    <div class="border-t border-zinc-800 pt-1.5">
+      <p class="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">Gate</p>
+      <ParamSlider label="Thresh" unit="dB" :min="-80" :max="0"
+        :model-value="channel.params.gateThresholdDb" @update:model-value="set('gateThresholdDb', $event)" />
+      <ParamSlider label="Range" unit="dB" :min="0" :max="60"
+        :model-value="channel.params.gateRangeDb" @update:model-value="set('gateRangeDb', $event)" />
+    </div>
 
     <div class="border-t border-zinc-800 pt-1.5">
       <p class="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">EQ · low shelf</p>
@@ -111,6 +133,24 @@ function set(key: NumericParamKey, value: number) {
     <div class="border-t border-zinc-800 pt-1.5">
       <ParamSlider label="Pan (PA)" unit="" :min="-1" :max="1" :step="0.01" :decimals="2"
         :model-value="channel.params.pan" @update:model-value="set('pan', $event)" />
+      <ParamSlider label="FX (delay)" unit="dB" :min="-60" :max="0"
+        :model-value="channel.params.fxSendDb" @update:model-value="set('fxSendDb', $event)" />
+      <div class="mt-1 flex items-center gap-1">
+        <span class="text-[10px] text-zinc-500">DCA</span>
+        <button
+          v-for="i in 4"
+          :key="i"
+          class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
+          :class="
+            (channel.params.dcaMask >> (i - 1)) & 1
+              ? 'bg-emerald-600 text-white'
+              : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
+          "
+          @click="store.toggleDcaAssign(channel.id, i - 1)"
+        >
+          {{ i }}
+        </button>
+      </div>
     </div>
 
     <div class="flex items-end gap-3 border-t border-zinc-800 pt-1.5">

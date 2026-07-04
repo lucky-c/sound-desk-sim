@@ -6,7 +6,10 @@ import type { ChannelParams, MixSnapshot } from '../src/types'
 function params(overrides: Partial<ChannelParams> = {}): ChannelParams {
   return {
     gainDb: 0,
+    polarity: false,
     hpfHz: 100,
+    gateThresholdDb: -80,
+    gateRangeDb: 40,
     eqLowFreq: 100,
     eqLowGainDb: 0,
     eqLoMidFreq: 400,
@@ -23,6 +26,8 @@ function params(overrides: Partial<ChannelParams> = {}): ChannelParams {
     compReleaseMs: 150,
     compMakeupDb: 0,
     pan: 0,
+    fxSendDb: -60,
+    dcaMask: 0,
     faderDb: -6,
     mute: false,
     solo: false,

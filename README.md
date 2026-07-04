@@ -98,14 +98,23 @@ together. Plug/unplug from each strip's picker, even mid-playback — new
 sources start loop-aligned, and the performer appears on stage at their
 natural spot.
 
-Each strip is M32-style: preamp gain, low cut, 4-band EQ (low shelf, two
-parametric mids with width/Q, high shelf), a full compressor (threshold,
-ratio, attack, release, makeup), a **pan knob** (pans the channel in the PA,
-working on top of the performer's natural stage-position pan), fader, meter,
-and mute/solo. Compact strips show pan + fader + M/S; expand with `+` for
-the full strip. The handle bar (always visible) carries Play/Pause, Loop,
-**master volume**, and master CLIP/LIM monitoring with a mini meter. Hide
-the whole console for a clean view of the stage — the handle stays.
+Each strip is M32-style: preamp gain, **polarity invert (ø)**, low cut, a
+**noise gate** (threshold + range — implemented as a tiny AudioWorklet,
+since Web Audio has no built-in gate; it degrades to a pass-through where
+worklets are unsupported), 4-band EQ (low shelf, two parametric mids with
+width/Q, high shelf), a full compressor (threshold, ratio, attack, release,
+makeup), a **pan knob** (pans the channel in the PA, working on top of the
+performer's natural stage-position pan), an **FX send** into a shared
+tempo-matched delay bus (alongside the stage's reverb bus), **DCA assign
+buttons**, fader, meter, and mute/solo. Compact strips show pan + fader +
+M/S; expand with `+` for the full strip.
+
+The master section adds **4 DCA groups** (group faders + mutes that scale
+and silence their assigned channels), and the handle bar (always visible)
+carries Play/Pause, Loop, **Scenes** (four in-memory save/recall slots
+capturing the full mix, plugging, and DCAs — M32-style snapshots), **master
+volume**, and master CLIP/LIM monitoring with a mini meter. Hide the whole
+console for a clean view of the stage — the handle stays.
 
 Under the hood each channel gains a post-fader spatial section
 (`StereoPanner → distance gain` dry path plus a send into a shared

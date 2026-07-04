@@ -24,6 +24,7 @@ const meters = useMeters()
 
 const open = ref(true)
 const expanded = reactive<Record<string, boolean>>({})
+const scenesOpen = ref(false)
 
 // While auditioning the A (original) state of a challenge, freeze the
 // console so edits can't land in a parameter set about to be restored.
@@ -92,6 +93,52 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
         Loop {{ mixer.transport.looping ? 'on' : 'off' }}
       </button>
 
+      <!-- scenes -->
+      <div class="relative">
+        <button
+          class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+          :class="scenesOpen ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+          @click="scenesOpen = !scenesOpen"
+        >
+          Scenes
+        </button>
+        <div
+          v-if="scenesOpen"
+          class="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-lg border border-zinc-800 bg-zinc-950/95 p-2 backdrop-blur"
+        >
+          <p class="mb-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
+            Scenes (session only)
+          </p>
+          <div
+            v-for="(scene, i) in mixer.scenes"
+            :key="i"
+            class="mb-1 flex items-center gap-2"
+          >
+            <span class="w-14 text-[11px]" :class="scene ? 'text-zinc-300' : 'text-zinc-600'">
+              Scene {{ i + 1 }}
+            </span>
+            <button
+              class="flex-1 rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-700"
+              @click="mixer.saveScene(i)"
+            >
+              Save
+            </button>
+            <button
+              class="flex-1 rounded px-2 py-0.5 text-[10px]"
+              :class="
+                scene
+                  ? 'bg-emerald-800 text-emerald-200 hover:bg-emerald-700'
+                  : 'cursor-default bg-zinc-900 text-zinc-700'
+              "
+              :disabled="!scene"
+              @click="mixer.recallScene(i)"
+            >
+              Recall
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- master volume + monitoring -->
       <div class="ml-auto flex items-center gap-3">
         <div class="hidden w-36 sm:block">
@@ -141,7 +188,7 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
       class="max-h-[420px] overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-opacity"
       :class="frozen ? 'pointer-events-none opacity-50' : ''"
     >
-      <div class="flex items-end gap-1.5 overflow-x-auto p-2">
+      <div class="flex items-start gap-1.5 overflow-x-auto p-2">
         <div v-for="ch in mixer.channels" :key="ch.id" class="flex shrink-0 flex-col gap-1">
           <!-- slot header: expand + instrument picker -->
           <div class="flex items-center gap-1">
@@ -234,6 +281,36 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
           >
             <span class="text-[10px] font-semibold text-zinc-600">Ch {{ ch.num }}</span>
             <span class="text-[9px] text-zinc-700">plug an instrument ↑</span>
+          </div>
+        </div>
+
+        <!-- DCA groups -->
+        <div class="ml-2 flex shrink-0 items-start gap-1.5 border-l border-zinc-800 pl-3">
+          <div
+            v-for="(dca, i) in mixer.dcas"
+            :key="i"
+            class="flex w-24 flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-2"
+          >
+            <span class="text-[10px] font-semibold text-zinc-400">DCA {{ i + 1 }}</span>
+            <ParamSlider
+              label="Fader"
+              unit="dB"
+              :min="-40"
+              :max="10"
+              :model-value="dca.faderDb"
+              @update:model-value="mixer.setDcaFader(i, $event)"
+            />
+            <button
+              class="rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
+              :class="
+                dca.mute
+                  ? 'bg-red-600 text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              "
+              @click="mixer.toggleDcaMute(i)"
+            >
+              MUTE
+            </button>
           </div>
         </div>
 

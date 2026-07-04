@@ -7,8 +7,14 @@
 export interface ChannelParams {
   /** Input (preamp) gain in dB, applied before the processing chain. */
   gainDb: number
+  /** Polarity invert (the desk's ø button). */
+  polarity: boolean
   /** Low-cut (high-pass) frequency in Hz. */
   hpfHz: number
+
+  /** Noise gate: threshold (-80 = open) and attenuation range. */
+  gateThresholdDb: number
+  gateRangeDb: number
 
   /** Low shelf. */
   eqLowFreq: number
@@ -38,6 +44,12 @@ export interface ChannelParams {
    */
   pan: number
 
+  /** Send into the FX (tempo delay) bus in dB (-60 = off). */
+  fxSendDb: number
+
+  /** DCA group membership, bits 0–3 = DCA 1–4. */
+  dcaMask: number
+
   /** Channel fader in dB (post-processing, pre-master). */
   faderDb: number
   mute: boolean
@@ -53,6 +65,8 @@ export type NumericParamKey = {
 export const NUMERIC_PARAM_KEYS = [
   'gainDb',
   'hpfHz',
+  'gateThresholdDb',
+  'gateRangeDb',
   'eqLowFreq',
   'eqLowGainDb',
   'eqLoMidFreq',
@@ -69,6 +83,8 @@ export const NUMERIC_PARAM_KEYS = [
   'compReleaseMs',
   'compMakeupDb',
   'pan',
+  'fxSendDb',
+  'dcaMask',
   'faderDb',
 ] as const satisfies readonly NumericParamKey[]
 
@@ -76,7 +92,10 @@ export const NUMERIC_PARAM_KEYS = [
 export function neutralParams(): ChannelParams {
   return {
     gainDb: 0,
+    polarity: false,
     hpfHz: 20,
+    gateThresholdDb: -80,
+    gateRangeDb: 40,
     eqLowFreq: 100,
     eqLowGainDb: 0,
     eqLoMidFreq: 400,
@@ -93,10 +112,24 @@ export function neutralParams(): ChannelParams {
     compReleaseMs: 150,
     compMakeupDb: 0,
     pan: 0,
+    fxSendDb: -60,
+    dcaMask: 0,
     faderDb: -8,
     mute: false,
     solo: false,
   }
+}
+
+/** One DCA group's master controls. */
+export interface DcaState {
+  faderDb: number
+  mute: boolean
+}
+
+export const DCA_COUNT = 4
+
+export function defaultDcas(): DcaState[] {
+  return Array.from({ length: DCA_COUNT }, () => ({ faderDb: 0, mute: false }))
 }
 
 /**
@@ -134,4 +167,6 @@ export interface TransportState {
 export interface MixSnapshot {
   channels: Record<string, ChannelParams>
   master: MasterState
+  /** DCA group states (optional for older/partial snapshots). */
+  dcas?: DcaState[]
 }

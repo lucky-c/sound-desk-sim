@@ -1,7 +1,9 @@
 import { reactive } from 'vue'
-import type { ChannelConfig, NumericParamKey } from '../types'
+import type { ChannelConfig, DcaState, NumericParamKey } from '../types'
+import { defaultDcas } from '../types'
 import { clamp, dbToLin } from '../lib/units'
 import { getInstrument, renderInstrument } from './instruments'
+import { createGateNode, ensureGateModule } from './gateWorklet'
 
 /**
  * The audio engine: one shared AudioContext and the full node graph.
@@ -28,7 +30,10 @@ import { getInstrument, renderInstrument } from './instruments'
 
 interface ChannelNodes {
   input: GainNode
+  polarity: GainNode
   hpf: BiquadFilterNode
+  /** Noise gate worklet, or a pass-through GainNode when unsupported. */
+  gate: AudioWorkletNode | GainNode
   eqLow: BiquadFilterNode
   eqLoMid: BiquadFilterNode
   eqHiMid: BiquadFilterNode
@@ -40,6 +45,7 @@ interface ChannelNodes {
   panner: StereoPannerNode
   dryGain: GainNode
   sendGain: GainNode
+  fxSend: GainNode
   /** Desk pan knob and stage-position pan, combined into panner.pan. */
   knobPan: number
   stagePan: number
@@ -60,6 +66,9 @@ let reverbInput: GainNode | null = null
 let convolver: ConvolverNode | null = null
 let reverbWet: GainNode | null = null
 let currentWet = 0
+let fxInput: GainNode | null = null
+let gateAvailable = false
+let dcas: DcaState[] = defaultDcas()
 const channelNodes = new Map<string, ChannelNodes>()
 
 let sourcesActive = false
@@ -113,6 +122,25 @@ function buildMaster(c: AudioContext): void {
   reverbInput.connect(convolver)
   convolver.connect(reverbWet)
   reverbWet.connect(masterFader)
+
+  // FX bus: a tempo-matched feedback delay (dotted eighth at the loop's
+  // 112 BPM), fed by each channel's FX send knob. Also pre-limiter.
+  fxInput = c.createGain()
+  const delay = c.createDelay(2)
+  delay.delayTime.value = (60 / 112 / 2) * 1.5
+  const feedback = c.createGain()
+  feedback.gain.value = 0.35
+  const damp = c.createBiquadFilter()
+  damp.type = 'lowpass'
+  damp.frequency.value = 3500
+  const fxWet = c.createGain()
+  fxWet.gain.value = 0.8
+  fxInput.connect(delay)
+  delay.connect(damp)
+  damp.connect(fxWet)
+  damp.connect(feedback)
+  feedback.connect(delay)
+  fxWet.connect(masterFader)
 }
 
 function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
@@ -121,10 +149,19 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const input = c.createGain()
   input.gain.value = dbToLin(p.gainDb)
 
+  const polarity = c.createGain()
+  polarity.gain.value = p.polarity ? -1 : 1
+
   const hpf = c.createBiquadFilter()
   hpf.type = 'highpass'
   hpf.frequency.value = p.hpfHz
   hpf.Q.value = 0.707
+
+  const gate = createGateNode(c, gateAvailable)
+  if (gate instanceof AudioWorkletNode) {
+    gate.parameters.get('threshold')!.value = p.gateThresholdDb
+    gate.parameters.get('range')!.value = p.gateRangeDb
+  }
 
   const eqLow = c.createBiquadFilter()
   eqLow.type = 'lowshelf'
@@ -169,9 +206,13 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const dryGain = c.createGain()
   const sendGain = c.createGain()
   sendGain.gain.value = 0
+  const fxSend = c.createGain()
+  fxSend.gain.value = p.fxSendDb <= -59 ? 0 : dbToLin(p.fxSendDb)
 
-  input.connect(hpf)
-  hpf.connect(eqLow)
+  input.connect(polarity)
+  polarity.connect(hpf)
+  hpf.connect(gate)
+  gate.connect(eqLow)
   eqLow.connect(eqLoMid)
   eqLoMid.connect(eqHiMid)
   eqHiMid.connect(eqHigh)
@@ -184,10 +225,14 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   dryGain.connect(masterFader!)
   analyser.connect(sendGain)
   sendGain.connect(reverbInput!)
+  analyser.connect(fxSend)
+  fxSend.connect(fxInput!)
 
   channelNodes.set(cfg.id, {
     input,
+    polarity,
     hpf,
+    gate,
     eqLow,
     eqLoMid,
     eqHiMid,
@@ -199,6 +244,7 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
     panner,
     dryGain,
     sendGain,
+    fxSend,
     knobPan: p.pan,
     stagePan: 0,
     buffer: null,
@@ -298,6 +344,7 @@ export async function startPlayback(
   await c.resume()
 
   if (!engineState.built) {
+    gateAvailable = await ensureGateModule(c)
     buildMaster(c)
     for (const cfg of configs) buildChannel(c, cfg)
     masterFader!.gain.value = dbToLin(masterFaderDb)
@@ -362,6 +409,14 @@ export function setChannelParam(id: string, key: NumericParamKey, value: number)
     case 'hpfHz':
       ramp(nodes.hpf.frequency, value)
       break
+    case 'gateThresholdDb':
+      if (nodes.gate instanceof AudioWorkletNode)
+        ramp(nodes.gate.parameters.get('threshold')!, value)
+      break
+    case 'gateRangeDb':
+      if (nodes.gate instanceof AudioWorkletNode)
+        ramp(nodes.gate.parameters.get('range')!, value)
+      break
     case 'eqLowFreq':
       ramp(nodes.eqLow.frequency, value)
       break
@@ -411,15 +466,32 @@ export function setChannelParam(id: string, key: NumericParamKey, value: number)
       nodes.knobPan = clamp(value, -1, 1)
       applyPan(nodes)
       break
+    case 'fxSendDb':
+      ramp(nodes.fxSend.gain, value <= -59 ? 0 : dbToLin(value))
+      break
+    case 'dcaMask':
     case 'faderDb':
-      // Fader level depends on mute/solo state — handled by updateMixGains.
+      // Effective level depends on mute/solo/DCA state — see updateMixGains.
       break
   }
 }
 
+/** Flip a channel's polarity (ø). Ramped through zero, so click-free. */
+export function setPolarity(id: string, inverted: boolean): void {
+  const nodes = channelNodes.get(id)
+  if (!nodes) return
+  ramp(nodes.polarity.gain, inverted ? -1 : 1)
+}
+
+/** Update the DCA group states (fader/mute per group). */
+export function setDcas(next: DcaState[]): void {
+  dcas = next.map((d) => ({ ...d }))
+}
+
 /**
- * Recompute every channel's effective fader gain from fader + mute + solo.
- * Solo on any channel silences all non-soloed channels.
+ * Recompute every channel's effective fader gain from fader + mute + solo
+ * + DCA groups. Solo on any channel silences all non-soloed channels; a
+ * muted DCA silences its members; DCA faders offset member levels in dB.
  */
 export function updateMixGains(configs: ChannelConfig[]): void {
   if (!engineState.built) return
@@ -427,8 +499,16 @@ export function updateMixGains(configs: ChannelConfig[]): void {
   for (const cfg of configs) {
     const nodes = channelNodes.get(cfg.id)
     if (!nodes) continue
-    const audible = !cfg.params.mute && (!anySolo || cfg.params.solo)
-    ramp(nodes.fader.gain, audible ? dbToLin(cfg.params.faderDb) : 0)
+    let dcaDb = 0
+    let dcaMuted = false
+    dcas.forEach((dca, i) => {
+      if ((cfg.params.dcaMask >> i) & 1) {
+        dcaDb += dca.faderDb
+        dcaMuted = dcaMuted || dca.mute
+      }
+    })
+    const audible = !cfg.params.mute && !dcaMuted && (!anySolo || cfg.params.solo)
+    ramp(nodes.fader.gain, audible ? dbToLin(cfg.params.faderDb + dcaDb) : 0)
   }
 }
 
