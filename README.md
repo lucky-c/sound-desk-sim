@@ -98,16 +98,27 @@ together. Plug/unplug from each strip's picker, even mid-playback — new
 sources start loop-aligned, and the performer appears on stage at their
 natural spot.
 
-Each strip is M32-style: preamp gain, **polarity invert (ø)**, low cut, a
-**noise gate** (threshold + range — implemented as a tiny AudioWorklet,
-since Web Audio has no built-in gate; it degrades to a pass-through where
-worklets are unsupported), 4-band EQ (low shelf, two parametric mids with
-width/Q, high shelf), a full compressor (threshold, ratio, attack, release,
-makeup), a **pan knob** (pans the channel in the PA, working on top of the
-performer's natural stage-position pan), an **FX send** into a shared
-tempo-matched delay bus (alongside the stage's reverb bus), **DCA assign
-buttons**, fader, meter, and mute/solo. Compact strips show pan + fader +
-M/S; expand with `+` for the full strip.
+Each strip is M32-style and looks the part: **rotary knobs** and **vertical
+faders**, like the real desk. Per channel: preamp gain, **polarity invert
+(ø)**, low cut, a **noise gate** (threshold + range — implemented as a tiny
+AudioWorklet, since Web Audio has no built-in gate; it degrades to a
+pass-through where worklets are unsupported), 4-band EQ (low shelf, two
+parametric mids with width/Q, high shelf), a full compressor (threshold,
+ratio, attack, release, makeup), a **pan knob** (pans the channel in the PA,
+working on top of the performer's natural stage-position pan), an **FX
+send** into a shared tempo-matched delay bus (alongside the stage's reverb
+bus), **DCA assign buttons**, fader, meter, and mute/solo. Compact strips
+show pan knob + vertical fader + meter + M/S/EQ; expand with `+` for the
+full knob-based strip. Knobs turn by dragging vertically.
+
+Every channel also has a **graphical EQ editor** (the `EQ` button, or
+`curve view` on an expanded strip): the channel's live spectrum with the
+combined EQ curve on top and draggable handles for the low cut and all four
+bands — drag for frequency/gain, mouse-wheel a mid handle for Q. The strip
+knobs stay in sync, since everything writes through the same store. An
+always-visible **master fader strip** (tall fader, meter, CLIP/LIM) anchors
+the right end of the console, and the PA stacks can be dragged on stage and
+restored with **Reset PA position** in the venue panel.
 
 The venue models **both sound paths a real audience hears**. The processed
 mix leaves through two **draggable PA stacks** at the stage edges — each

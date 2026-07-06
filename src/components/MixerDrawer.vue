@@ -3,20 +3,22 @@ import { computed, reactive, ref } from 'vue'
 import { useMixerStore } from '../stores/mixer'
 import { useChallengeStore } from '../stores/challenges'
 import { useMeters } from '../composables/useMeters'
+import { uiState } from '../composables/uiState'
 import { clamp, linToDb } from '../lib/units'
 import { INSTRUMENTS } from '../audio/instruments'
 import type { ChannelConfig } from '../types'
 import ChannelStrip from './ChannelStrip.vue'
-import MasterStrip from './MasterStrip.vue'
 import ParamSlider from './ParamSlider.vue'
+import RotaryKnob from './RotaryKnob.vue'
+import VFader from './VFader.vue'
 import LevelMeter from './LevelMeter.vue'
 import AnalyzerPanel from './AnalyzerPanel.vue'
+import EqEditor from './EqEditor.vue'
 
 /**
- * The FOH console drawer: a 16-channel M32R-style desk over the stage view.
- * The handle bar (always visible) carries transport, master volume, and
- * master monitoring; the body shows a compact strip per channel — empty
- * slots offer an instrument picker; plugged slots expand to the full strip.
+ * The FOH console drawer: a 16-channel M32R-style desk over the stage view —
+ * vertical faders, rotary pans, per-channel EQ view, DCA group faders, and
+ * an always-visible master fader strip.
  */
 
 const mixer = useMixerStore()
@@ -59,8 +61,9 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
 
 <template>
   <div class="absolute inset-x-0 bottom-0 z-10 flex flex-col">
-    <!-- floating RTA panel, anchored above the console -->
-    <AnalyzerPanel v-if="rtaOpen" class="absolute bottom-full left-3 mb-2 z-30" />
+    <!-- floating panels, anchored above the console -->
+    <AnalyzerPanel v-if="rtaOpen" class="absolute bottom-full left-3 z-30 mb-2" />
+    <EqEditor v-if="uiState.eqChannelId" class="absolute bottom-full right-3 z-30 mb-2" />
 
     <!-- handle bar -->
     <div
@@ -153,7 +156,7 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
         </div>
       </div>
 
-      <!-- master volume + monitoring -->
+      <!-- master monitoring -->
       <div class="ml-auto flex items-center gap-3">
         <div class="hidden w-36 sm:block">
           <ParamSlider
@@ -199,7 +202,7 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
     <!-- console body -->
     <div
       v-show="open"
-      class="max-h-[420px] overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-opacity"
+      class="max-h-[440px] overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-opacity"
       :class="frozen ? 'pointer-events-none opacity-50' : ''"
     >
       <div class="flex items-start gap-1.5 overflow-x-auto p-2">
@@ -209,6 +212,7 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
             <button
               v-if="ch.instrumentId"
               class="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700"
+              :title="expanded[ch.id] ? 'Collapse strip' : 'Full strip (gate, EQ, comp…)'"
               @click="expanded[ch.id] = !expanded[ch.id]"
             >
               {{ expanded[ch.id] ? '−' : '+' }}
@@ -227,74 +231,80 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
 
           <ChannelStrip v-if="ch.instrumentId && expanded[ch.id]" :channel="ch" />
 
-          <!-- compact plugged strip -->
+          <!-- compact plugged strip: desk-style -->
           <div
             v-else-if="ch.instrumentId"
-            class="flex w-32 flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-2"
+            class="flex w-24 flex-col items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1.5"
           >
-            <span class="truncate text-xs font-semibold" :style="{ color: ch.color }">
-              <span class="mr-1 text-[9px] text-zinc-600">{{ ch.num }}</span>
+            <span
+              class="w-full truncate text-center text-[10px] font-semibold"
+              :style="{ color: ch.color }"
+            >
+              <span class="mr-0.5 text-[8px] text-zinc-600">{{ ch.num }}</span>
               {{ ch.name }}
             </span>
-            <ParamSlider
+            <RotaryKnob
               label="Pan"
               unit=""
               :min="-1"
               :max="1"
-              :step="0.01"
               :decimals="2"
               :model-value="ch.params.pan"
               @update:model-value="mixer.setParam(ch.id, 'pan', $event)"
             />
-            <div class="flex items-end gap-1.5">
+            <div class="flex items-end gap-1">
+              <VFader
+                height-class="h-28"
+                :min="-60"
+                :max="6"
+                :model-value="ch.params.faderDb"
+                @update:model-value="mixer.setParam(ch.id, 'faderDb', $event)"
+              />
               <LevelMeter
                 :peak="meters.channels[ch.id]?.peak ?? 0"
-                size-class="h-14 w-1.5"
+                size-class="h-28 w-1.5"
               />
-              <div class="min-w-0 flex-1">
-                <ParamSlider
-                  label="Fader"
-                  unit="dB"
-                  :min="-60"
-                  :max="6"
-                  :model-value="ch.params.faderDb"
-                  @update:model-value="mixer.setParam(ch.id, 'faderDb', $event)"
-                />
-                <div class="mt-1 flex gap-1">
-                  <button
-                    class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
-                    :class="
-                      ch.params.mute
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                    "
-                    @click="mixer.toggleMute(ch.id)"
-                  >
-                    M
-                  </button>
-                  <button
-                    class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
-                    :class="
-                      ch.params.solo
-                        ? 'bg-yellow-500 text-black'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                    "
-                    @click="mixer.toggleSolo(ch.id)"
-                  >
-                    S
-                  </button>
-                </div>
-              </div>
+            </div>
+            <div class="flex w-full gap-1">
+              <button
+                class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
+                :class="
+                  ch.params.mute
+                    ? 'bg-red-600 text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                "
+                @click="mixer.toggleMute(ch.id)"
+              >
+                M
+              </button>
+              <button
+                class="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
+                :class="
+                  ch.params.solo
+                    ? 'bg-yellow-500 text-black'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                "
+                @click="mixer.toggleSolo(ch.id)"
+              >
+                S
+              </button>
+              <button
+                class="flex-1 rounded bg-zinc-800 px-1 py-0.5 text-[9px] font-semibold text-emerald-400 hover:bg-zinc-700"
+                title="Graphical EQ"
+                @click="uiState.eqChannelId = ch.id"
+              >
+                EQ
+              </button>
             </div>
           </div>
 
           <!-- empty slot -->
           <div
             v-else
-            class="flex h-[104px] w-32 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-800 bg-zinc-900/40 p-2"
+            class="flex h-[13.5rem] w-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-800 bg-zinc-900/40 p-2"
           >
             <span class="text-[10px] font-semibold text-zinc-600">Ch {{ ch.num }}</span>
-            <span class="text-[9px] text-zinc-700">plug an instrument ↑</span>
+            <span class="text-center text-[9px] text-zinc-700">plug an instrument ↑</span>
           </div>
         </div>
 
@@ -303,19 +313,18 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
           <div
             v-for="(dca, i) in mixer.dcas"
             :key="i"
-            class="flex w-24 flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-2"
+            class="mt-6 flex w-16 flex-col items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 p-1.5"
           >
             <span class="text-[10px] font-semibold text-zinc-400">DCA {{ i + 1 }}</span>
-            <ParamSlider
-              label="Fader"
-              unit="dB"
+            <VFader
+              height-class="h-24"
               :min="-40"
               :max="10"
               :model-value="dca.faderDb"
               @update:model-value="mixer.setDcaFader(i, $event)"
             />
             <button
-              class="rounded px-1 py-0.5 text-[10px] font-bold transition-colors"
+              class="w-full rounded px-1 py-0.5 text-[9px] font-bold transition-colors"
               :class="
                 dca.mute
                   ? 'bg-red-600 text-white'
@@ -328,35 +337,29 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
           </div>
         </div>
 
-        <!-- master -->
-        <div class="ml-2 flex shrink-0 flex-col gap-1 border-l border-zinc-800 pl-3">
-          <button
-            class="self-start rounded bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700"
-            @click="expanded.master = !expanded.master"
-          >
-            {{ expanded.master ? '− less' : '+ details' }}
-          </button>
-
-          <MasterStrip v-if="expanded.master" />
-
+        <!-- master fader strip (always visible) -->
+        <div class="ml-2 flex shrink-0 flex-col border-l border-zinc-800 pl-3">
           <div
-            v-else
-            class="flex w-36 flex-col gap-1.5 rounded-lg border border-emerald-900 bg-zinc-900 p-2"
+            class="mt-6 flex w-24 flex-col items-center gap-1 rounded-lg border border-emerald-900 bg-zinc-900 p-1.5"
           >
-            <span class="text-xs font-semibold text-emerald-400">Master</span>
-            <div class="flex items-end gap-2">
-              <LevelMeter :peak="meters.master.peak" size-class="h-14 w-2" />
-              <div class="min-w-0 flex-1">
-                <ParamSlider
-                  label="Volume"
-                  unit="dB"
-                  :min="-60"
-                  :max="6"
-                  :model-value="mixer.master.faderDb"
-                  @update:model-value="mixer.setMasterFader($event)"
-                />
-              </div>
+            <span class="text-[10px] font-semibold text-emerald-400">MASTER</span>
+            <div class="flex w-full items-center justify-center gap-2 text-[8px] font-semibold">
+              <span :class="meters.master.clip ? 'text-red-400' : 'text-zinc-600'">● CLIP</span>
+              <span :class="limiting ? 'text-amber-400' : 'text-zinc-600'">● LIM</span>
             </div>
+            <div class="flex items-end gap-1">
+              <VFader
+                height-class="h-32"
+                :min="-60"
+                :max="6"
+                :model-value="mixer.master.faderDb"
+                @update:model-value="mixer.setMasterFader($event)"
+              />
+              <LevelMeter :peak="meters.master.peak" size-class="h-32 w-2" />
+            </div>
+            <span class="font-mono text-[8px] tabular-nums text-zinc-500">
+              LIM {{ meters.master.reductionDb.toFixed(1) }} dB
+            </span>
           </div>
         </div>
       </div>

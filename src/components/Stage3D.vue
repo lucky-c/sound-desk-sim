@@ -500,11 +500,18 @@ onMounted(() => {
           @update:model-value="stage.setBacklineAmount($event / 100)"
         />
       </div>
+      <button
+        class="self-start rounded bg-zinc-800 px-2 py-1 text-[10px] font-semibold text-zinc-300 hover:bg-zinc-700"
+        title="Put both PA stacks back at the stage edges"
+        @click="stage.resetPaSpeakers()"
+      >
+        Reset PA position
+      </button>
       <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>
       <p class="max-w-44 border-t border-zinc-800 pt-1.5 text-[10px] leading-snug text-zinc-600">
-        Drag performers to place them — position changes pan, level, and room.
-        Green marker = FOH, your ears. Drag empty space to orbit · scroll to
-        zoom.
+        Drag performers — or the PA stacks — to move them; position changes
+        pan, level, and room. Green marker = FOH, your ears. Drag empty space
+        to orbit · scroll to zoom.
       </p>
     </div>
   </div>

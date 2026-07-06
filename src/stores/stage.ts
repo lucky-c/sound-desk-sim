@@ -90,6 +90,11 @@ export const useStageStore = defineStore('stage', () => {
     pushPaSpeakers()
   }
 
+  function resetPaSpeakers() {
+    Object.assign(paSpeakers, defaultPaSpeakers())
+    pushPaSpeakers()
+  }
+
   function pushPaSpeakers() {
     if (!engineState.built) return
     ;(['left', 'right'] as const).forEach((side, i) => {
@@ -225,6 +230,7 @@ export const useStageStore = defineStore('stage', () => {
     setRoomSize,
     setBleedAmount,
     setPaSpeaker,
+    resetPaSpeakers,
     setBacklineAmount,
   }
 })
