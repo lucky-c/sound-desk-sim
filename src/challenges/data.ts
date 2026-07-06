@@ -142,4 +142,81 @@ export const challenges: Challenge[] = [
       'This one is about faders, not tone: rebalance the two low-end channels.',
     ],
   },
+
+  {
+    id: 'ring-out',
+    title: 'Ring out the feedback',
+    description:
+      'The keys wedge is feeding back — a howl builds up and won’t die on its ' +
+      'own. Find the ringing frequency and notch it out on the keys strip, ' +
+      'without burying the channel.',
+    initialState: [
+      { channel: 'ch04', param: 'gainDb', value: 8 },
+      { channel: 'ch04', param: 'eqHiMidFreq', value: 2500 },
+      { channel: 'ch04', param: 'eqHiMidGainDb', value: 0 },
+      { channel: 'ch04', param: 'eqHiMidQ', value: 1 },
+      { channel: 'ch04', param: 'faderDb', value: -6 },
+      // No compression on the channel — nothing tames the loop for you.
+      { channel: 'ch04', param: 'compRatio', value: 1 },
+      { channel: 'ch04', param: 'compThresholdDb', value: 0 },
+    ],
+    feedback: { channel: 'ch04', freqHz: 950, loopGainDb: 4 },
+    targets: [
+      {
+        channel: 'ch04',
+        param: 'eqHiMidFreq',
+        label: 'Find the ringing frequency',
+        range: { min: 800, max: 1100 },
+        guidance: {
+          tooLow: 'You’re below the ring — sweep the hi-mid band up toward it.',
+          tooHigh: 'You’re above the ring — sweep the hi-mid band down toward it.',
+        },
+      },
+      {
+        channel: 'ch04',
+        param: 'eqHiMidGainDb',
+        label: 'Notch it out',
+        range: { max: -9 },
+        guidance: {
+          tooHigh:
+            'The ring needs a deep cut — dig the hi-mid gain well below zero.',
+        },
+      },
+      {
+        channel: 'ch04',
+        param: 'eqHiMidQ',
+        label: 'Surgical, not broad',
+        range: { min: 2 },
+        guidance: {
+          tooLow:
+            'Narrow the band (raise Q) so the notch only removes the ring, not the whole midrange.',
+        },
+      },
+      {
+        channel: 'ch04',
+        param: 'faderDb',
+        label: 'Keep the keys onstage',
+        range: { min: -14, max: -4 },
+        guidance: {
+          tooLow:
+            'Pulling the fader is not ringing out — keep the keys audible and kill the ring with EQ.',
+          tooHigh: 'Don’t push the channel hotter while it’s still ringing.',
+        },
+      },
+      {
+        channel: 'ch04',
+        param: 'gainDb',
+        label: 'No extra gain',
+        range: { max: 8 },
+        guidance: {
+          tooHigh: 'More preamp gain feeds the loop — back it off.',
+        },
+      },
+    ],
+    hints: [
+      'Feedback rings at one specific frequency. The classic move: sweep a narrow boost to find where it screams worst, then flip it into a deep cut.',
+      'The howl lives around 1 kHz.',
+      'Set the hi-mid band near the ring, Q above 2, gain −9 or deeper — and leave the fader where the band can hear it.',
+    ],
+  },
 ]

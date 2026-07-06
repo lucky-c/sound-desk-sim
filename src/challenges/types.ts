@@ -61,6 +61,18 @@ export interface ParamOverride {
   value: number
 }
 
+/**
+ * A simulated monitor-feedback loop: while the challenge is active, the
+ * channel's post-fader signal loops back into its mic through a narrow
+ * bandpass at `freqHz`. If the loop gain exceeds unity it audibly howls —
+ * and an EQ cut at the ring frequency genuinely tames it.
+ */
+export interface FeedbackSpec {
+  channel: string
+  freqHz: number
+  loopGainDb: number
+}
+
 export interface Challenge {
   id: string
   title: string
@@ -68,6 +80,8 @@ export interface Challenge {
   description: string
   /** Applied on load via the store's ramped setters (on top of the default mix). */
   initialState?: ParamOverride[]
+  /** Optional live feedback loop that creates the problem physically. */
+  feedback?: FeedbackSpec
   targets: ChallengeTarget[]
   /** Ordered, progressively more specific nudges. */
   hints?: string[]

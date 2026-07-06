@@ -54,6 +54,21 @@ export function computeSpatial(
   return { pan, dry, send }
 }
 
+// ---- mic bleed ----
+
+/**
+ * How much of performer B leaks into performer A's mic, from the distance
+ * between them (meters). Inverse-square-ish rolloff referenced to 0.5 m;
+ * inaudibly small contributions round to zero so no node ramps are wasted.
+ * `amount` is the user's global bleed control, 0..1.
+ */
+export function computeBleedGain(distance: number, amount: number): number {
+  if (amount <= 0) return 0
+  const db = -14 - 30 * Math.log10(Math.max(distance, 0.5) / 0.5)
+  if (db < -55) return 0
+  return Math.pow(10, db / 20) * amount
+}
+
 // ---- rooms ----
 
 export type RoomPreset = 'club' | 'hall' | 'openair'

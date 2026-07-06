@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type { RoomPreset, StagePosition } from '../audio/spatial'
 import {
   STAGE_BOUNDS,
+  computeBleedGain,
   computeSpatial,
   renderRoomIR,
   roomSpec,
@@ -66,6 +67,39 @@ export const useStageStore = defineStore('stage', () => {
       z: clamp(pos.z, STAGE_BOUNDS.minZ, STAGE_BOUNDS.maxZ),
     }
     pushSpatial(id)
+    scheduleBleeds()
+  }
+
+  // ---- mic bleed ----
+  /** Global bleed amount, 0..1: how leaky the stage mics are. */
+  const bleedAmount = ref(0.5)
+
+  let bleedTimer: ReturnType<typeof setTimeout> | undefined
+  function scheduleBleeds() {
+    clearTimeout(bleedTimer)
+    bleedTimer = setTimeout(updateAllBleeds, 80)
+  }
+
+  /** Push the full pairwise bleed matrix into the engine (plugged mics only). */
+  function updateAllBleeds() {
+    if (!engineState.built) return
+    const plugged = mixer.channels.filter((ch) => ch.instrumentId)
+    for (const to of plugged) {
+      const pTo = positions[to.id]
+      if (!pTo) continue
+      for (const from of plugged) {
+        if (from.id === to.id) continue
+        const pFrom = positions[from.id]
+        if (!pFrom) continue
+        const dist = Math.hypot(pFrom.x - pTo.x, pFrom.z - pTo.z)
+        engine.setBleed(from.id, to.id, computeBleedGain(dist, bleedAmount.value))
+      }
+    }
+  }
+
+  function setBleedAmount(v: number) {
+    bleedAmount.value = clamp(v, 0, 1)
+    scheduleBleeds()
   }
 
   // Give newly-plugged channels their instrument's natural stage spot —
@@ -83,6 +117,7 @@ export const useStageStore = defineStore('stage', () => {
           delete positions[ch.id]
         }
       })
+      scheduleBleeds()
     },
     { immediate: true },
   )
@@ -121,6 +156,7 @@ export const useStageStore = defineStore('stage', () => {
       if (!built) return
       for (const id of Object.keys(positions)) pushSpatial(id)
       void applyRoom()
+      updateAllBleeds()
     },
     { immediate: true },
   )
@@ -129,8 +165,10 @@ export const useStageStore = defineStore('stage', () => {
     positions,
     roomPreset,
     roomSize,
+    bleedAmount,
     setPosition,
     setRoomPreset,
     setRoomSize,
+    setBleedAmount,
   }
 })

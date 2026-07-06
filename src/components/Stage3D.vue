@@ -411,6 +411,21 @@ onMounted(() => {
           @update:model-value="stage.setRoomSize($event)"
         />
       </div>
+      <div
+        class="w-44"
+        title="How much each performer leaks into the other mics on stage, by distance. Gates exist because of this."
+      >
+        <ParamSlider
+          label="Mic bleed"
+          unit="%"
+          :min="0"
+          :max="100"
+          :step="1"
+          :decimals="0"
+          :model-value="stage.bleedAmount * 100"
+          @update:model-value="stage.setBleedAmount($event / 100)"
+        />
+      </div>
       <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>
       <p class="max-w-44 border-t border-zinc-800 pt-1.5 text-[10px] leading-snug text-zinc-600">
         Drag performers to place them — position changes pan, level, and room.

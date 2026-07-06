@@ -5,6 +5,8 @@ import type { Challenge, ValidationResult } from '../challenges/types'
 import { challenges } from '../challenges/data'
 import { validateChallenge } from '../challenges/validate'
 import { defaultMixSnapshot, useMixerStore } from './mixer'
+import * as engine from '../audio/engine'
+import { engineState } from '../audio/engine'
 
 /** Debounce so validation doesn't thrash on every slider tick. */
 const VALIDATE_DEBOUNCE_MS = 200
@@ -89,10 +91,28 @@ export const useChallengeStore = defineStore('challenges', () => {
     }
     mixer.applySnapshot(start)
     initialSnapshot.value = start
+    applyFeedback()
     runValidation()
   }
 
+  /** Enable/disable the active challenge's monitor-feedback loop. */
+  function applyFeedback() {
+    engine.disableMonitorFeedback()
+    const fb = active.value?.feedback
+    if (fb) engine.enableMonitorFeedback(fb.channel, fb.freqHz, fb.loopGainDb)
+  }
+
+  // The engine graph builds lazily on first Play — (re)arm the feedback
+  // loop once it exists.
+  watch(
+    () => engineState.built,
+    (built) => {
+      if (built) applyFeedback()
+    },
+  )
+
   function exit() {
+    engine.disableMonitorFeedback()
     activeId.value = null
     result.value = null
     initialSnapshot.value = null

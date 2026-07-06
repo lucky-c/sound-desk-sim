@@ -29,6 +29,8 @@ import { createGateNode, ensureGateModule } from './gateWorklet'
  */
 
 interface ChannelNodes {
+  /** Pre-preamp tap: the raw source signal, also feeding other mics' bleed. */
+  srcTap: GainNode
   input: GainNode
   polarity: GainNode
   hpf: BiquadFilterNode
@@ -72,6 +74,14 @@ let dcas: DcaState[] = defaultDcas()
 const channelNodes = new Map<string, ChannelNodes>()
 /** Latest gate gain (linear) reported by each channel's gate worklet. */
 const gateGains = new Map<string, number>()
+/** Mic-bleed gains, keyed `${fromChannel}->${toChannel}`. */
+const bleedGains = new Map<string, GainNode>()
+/** The active monitor-feedback loop (challenge feature), if any. */
+let feedbackLoop: {
+  channelId: string
+  bp: BiquadFilterNode
+  tail: WaveShaperNode
+} | null = null
 
 let sourcesActive = false
 let looping = true
@@ -148,6 +158,8 @@ function buildMaster(c: AudioContext): void {
 function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const p = cfg.params
 
+  const srcTap = c.createGain()
+
   const input = c.createGain()
   input.gain.value = dbToLin(p.gainDb)
 
@@ -214,6 +226,7 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const fxSend = c.createGain()
   fxSend.gain.value = p.fxSendDb <= -59 ? 0 : dbToLin(p.fxSendDb)
 
+  srcTap.connect(input)
   input.connect(polarity)
   polarity.connect(hpf)
   hpf.connect(gate)
@@ -234,6 +247,7 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   fxSend.connect(fxInput!)
 
   channelNodes.set(cfg.id, {
+    srcTap,
     input,
     polarity,
     hpf,
@@ -297,7 +311,7 @@ function startSource(c: AudioContext, nodes: ChannelNodes, when: number, offset:
   const src = c.createBufferSource()
   src.buffer = nodes.buffer
   src.loop = looping
-  src.connect(nodes.input)
+  src.connect(nodes.srcTap)
   src.onended = () => {
     liveSources.delete(src)
     if (nodes.source === src) nodes.source = null
@@ -577,6 +591,89 @@ export function getChannelEqResponse(
   return true
 }
 
+// ---- mic bleed ----
+
+/**
+ * Set how much of `from`'s raw source leaks into `to`'s mic (pre-preamp,
+ * so the bleed rides through the receiving channel's whole strip — gate
+ * included). Gain nodes are created lazily per audible pair and ramped.
+ */
+export function setBleed(from: string, to: string, gain: number): void {
+  const src = channelNodes.get(from)
+  const dst = channelNodes.get(to)
+  if (!src || !dst || !ctx) return
+  const key = `${from}->${to}`
+  let g = bleedGains.get(key)
+  if (!g) {
+    if (gain <= 0.0001) return
+    g = ctx.createGain()
+    g.gain.value = 0
+    src.srcTap.connect(g)
+    g.connect(dst.input)
+    bleedGains.set(key, g)
+  }
+  ramp(g.gain, gain)
+}
+
+// ---- monitor feedback (challenge feature) ----
+
+/**
+ * Simulate a monitor wedge feeding back into a channel's mic: a narrow
+ * bandpass + short delay + gain looped from the channel's post-fader
+ * signal back into its input. When the loop gain exceeds unity at the
+ * ring frequency, it howls — and cutting that frequency on the channel's
+ * own EQ genuinely brings the loop back under control. A tanh soft-clip
+ * bounds the loop; the master safety limiter protects ears as always.
+ */
+export function enableMonitorFeedback(
+  channelId: string,
+  freqHz: number,
+  loopGainDb: number,
+): void {
+  disableMonitorFeedback()
+  const nodes = channelNodes.get(channelId)
+  if (!nodes || !ctx) return
+
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.value = freqHz
+  bp.Q.value = 12
+
+  const delay = ctx.createDelay(0.1)
+  delay.delayTime.value = 0.012
+
+  const loopGain = ctx.createGain()
+  loopGain.gain.value = dbToLin(loopGainDb)
+
+  const clip = ctx.createWaveShaper()
+  const curve = new Float32Array(1024)
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1
+    curve[i] = 0.4 * Math.tanh(x / 0.4)
+  }
+  clip.curve = curve
+
+  nodes.analyser.connect(bp)
+  bp.connect(delay)
+  delay.connect(loopGain)
+  loopGain.connect(clip)
+  clip.connect(nodes.input)
+
+  feedbackLoop = { channelId, bp, tail: clip }
+}
+
+export function disableMonitorFeedback(): void {
+  if (!feedbackLoop) return
+  const nodes = channelNodes.get(feedbackLoop.channelId)
+  try {
+    nodes?.analyser.disconnect(feedbackLoop.bp)
+    feedbackLoop.tail.disconnect()
+  } catch {
+    // already disconnected
+  }
+  feedbackLoop = null
+}
+
 // ---- stage spatialization ----
 
 /** Sample rate of the live context (for offline IR rendering), if built. */
@@ -610,4 +707,15 @@ export function setRoom(ir: AudioBuffer, wet: number): void {
     convolver.buffer = ir
     reverbWet.gain.setTargetAtTime(currentWet, ctx.currentTime, 0.05)
   }, 60)
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as Record<string, unknown>).__engine = {
+    getMasterAnalyser,
+    getChannelAnalysers,
+    getSampleRate,
+    enableMonitorFeedback,
+    disableMonitorFeedback,
+    feedbackActive: () => feedbackLoop !== null,
+  }
 }

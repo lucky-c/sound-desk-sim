@@ -109,6 +109,20 @@ tempo-matched delay bus (alongside the stage's reverb bus), **DCA assign
 buttons**, fader, meter, and mute/solo. Compact strips show pan + fader +
 M/S; expand with `+` for the full strip.
 
+The stage also simulates **mic bleed**: every performer leaks into the other
+mics on stage, scaled by distance (inverse-square-ish, referenced to 0.5 m)
+and by the global *Mic bleed* control in the venue panel. Bleed enters each
+receiving channel *before* the preamp, so it rides through the whole strip —
+which is exactly why the gate exists: tighten the kick gate and hear the
+snare bleed vanish between hits, or just move performers apart.
+
+One challenge, **Ring out the feedback**, is physically real: while it's
+active, the keys' post-fader signal loops back into its own mic through a
+narrow bandpass (a simulated monitor wedge). The loop gain genuinely exceeds
+unity, so it howls — bounded by a soft-clip in the loop and, as always, the
+master safety limiter — and a surgical hi-mid notch at the ringing frequency
+genuinely brings the loop back under control and the howl dies.
+
 The **RTA** button opens a real-time spectrum analyzer fed straight from the
 engine's AnalyserNodes — pick the master bus or any channel. Selecting a
 channel overlays its live **EQ curve** (low cut + all four bands, computed
