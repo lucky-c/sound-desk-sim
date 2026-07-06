@@ -2,6 +2,7 @@ import { onMounted, onUnmounted, reactive } from 'vue'
 import {
   engineState,
   getChannelAnalysers,
+  getChannelDynamics,
   getLimiterReductionDb,
   getMasterAnalyser,
 } from '../audio/engine'
@@ -9,11 +10,15 @@ import {
 export interface Level {
   /** Linear peak amplitude of the last analysis frame (0..~1). */
   peak: number
+  /** Compressor gain reduction in dB (negative = compressing). */
+  compGrDb: number
+  /** Gate gain, linear (1 = open, near 0 = closed). */
+  gateGain: number
 }
 
 interface MeterState {
   channels: Record<string, Level>
-  master: Level & { reductionDb: number; clip: boolean }
+  master: { peak: number; reductionDb: number; clip: boolean }
 }
 
 /** Peak level approaching 0 dBFS pre-limiter counts as a clip. */
@@ -24,6 +29,10 @@ const meters = reactive<MeterState>({
   channels: {},
   master: { peak: 0, reductionDb: 0, clip: false },
 })
+
+if (import.meta.env.DEV) {
+  ;(window as unknown as Record<string, unknown>).__meters = meters
+}
 
 const scratch = new Map<AnalyserNode, Float32Array<ArrayBuffer>>()
 let rafId = 0
@@ -48,8 +57,15 @@ function peakOf(analyser: AnalyserNode): number {
 function tick(): void {
   if (engineState.built) {
     for (const [id, analyser] of getChannelAnalysers()) {
-      const level = meters.channels[id] ?? (meters.channels[id] = { peak: 0 })
+      const level =
+        meters.channels[id] ??
+        (meters.channels[id] = { peak: 0, compGrDb: 0, gateGain: 1 })
       level.peak = peakOf(analyser)
+      const dyn = getChannelDynamics(id)
+      if (dyn) {
+        level.compGrDb = dyn.compGrDb
+        level.gateGain = dyn.gateGain
+      }
     }
     const master = getMasterAnalyser()
     if (master) {

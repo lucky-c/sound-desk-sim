@@ -10,6 +10,7 @@ import ChannelStrip from './ChannelStrip.vue'
 import MasterStrip from './MasterStrip.vue'
 import ParamSlider from './ParamSlider.vue'
 import LevelMeter from './LevelMeter.vue'
+import AnalyzerPanel from './AnalyzerPanel.vue'
 
 /**
  * The FOH console drawer: a 16-channel M32R-style desk over the stage view.
@@ -25,6 +26,7 @@ const meters = useMeters()
 const open = ref(true)
 const expanded = reactive<Record<string, boolean>>({})
 const scenesOpen = ref(false)
+const rtaOpen = ref(false)
 
 // While auditioning the A (original) state of a challenge, freeze the
 // console so edits can't land in a parameter set about to be restored.
@@ -57,6 +59,9 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
 
 <template>
   <div class="absolute inset-x-0 bottom-0 z-10 flex flex-col">
+    <!-- floating RTA panel, anchored above the console -->
+    <AnalyzerPanel v-if="rtaOpen" class="absolute bottom-full left-3 mb-2 z-30" />
+
     <!-- handle bar -->
     <div
       class="flex items-center gap-2 border-t border-zinc-800 bg-zinc-950/95 px-3 py-2 backdrop-blur"
@@ -91,6 +96,15 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
         @click="mixer.toggleLoop()"
       >
         Loop {{ mixer.transport.looping ? 'on' : 'off' }}
+      </button>
+
+      <button
+        class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+        :class="rtaOpen ? 'bg-emerald-900 text-emerald-300' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+        title="Real-time spectrum analyzer with EQ curve overlay"
+        @click="rtaOpen = !rtaOpen"
+      >
+        RTA
       </button>
 
       <!-- scenes -->

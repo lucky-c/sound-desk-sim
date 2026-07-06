@@ -109,6 +109,15 @@ tempo-matched delay bus (alongside the stage's reverb bus), **DCA assign
 buttons**, fader, meter, and mute/solo. Compact strips show pan + fader +
 M/S; expand with `+` for the full strip.
 
+The **RTA** button opens a real-time spectrum analyzer fed straight from the
+engine's AnalyserNodes — pick the master bus or any channel. Selecting a
+channel overlays its live **EQ curve** (low cut + all four bands, computed
+from the actual BiquadFilterNodes via `getFrequencyResponse`), so you can
+watch the curve bend into the spectrum as you turn knobs. Expanded strips
+also show live **gain-reduction meters**: the compressor's GR bar (from
+`DynamicsCompressor.reduction`) and a gate open/closed light (reported by
+the gate worklet).
+
 The master section adds **4 DCA groups** (group faders + mutes that scale
 and silence their assigned channels), and the handle bar (always visible)
 carries Play/Pause, Loop, **Scenes** (four in-memory save/recall slots

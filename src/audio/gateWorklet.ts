@@ -21,6 +21,7 @@ class SdsGateProcessor extends AudioWorkletProcessor {
     super()
     this.env = 0
     this.gain = 1
+    this.tick = 0
   }
 
   process(inputs, outputs, parameters) {
@@ -52,6 +53,9 @@ class SdsGateProcessor extends AudioWorkletProcessor {
         output[c][i] = src[i] * this.gain
       }
     }
+    // Report the current gate gain ~every 43 ms for the UI's GR meter.
+    this.tick++
+    if ((this.tick & 15) === 0) this.port.postMessage(this.gain)
     return true
   }
 }

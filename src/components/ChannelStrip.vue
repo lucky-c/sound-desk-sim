@@ -17,6 +17,14 @@ const meters = useMeters()
 const peak = computed(() => meters.channels[props.channel.id]?.peak ?? 0)
 const stemSource = computed(() => engineState.stemSources[props.channel.id])
 
+/** Compressor gain reduction, shown as a positive dB amount. */
+const compGr = computed(() =>
+  Math.max(0, -(meters.channels[props.channel.id]?.compGrDb ?? 0)),
+)
+const gateClosed = computed(
+  () => (meters.channels[props.channel.id]?.gateGain ?? 1) < 0.5,
+)
+
 function set(key: NumericParamKey, value: number) {
   store.setParam(props.channel.id, key, value)
 }
@@ -73,7 +81,14 @@ function set(key: NumericParamKey, value: number) {
     />
 
     <div class="border-t border-zinc-800 pt-1.5">
-      <p class="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">Gate</p>
+      <p class="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
+        Gate
+        <span
+          class="inline-block h-1.5 w-1.5 rounded-full"
+          :class="gateClosed ? 'bg-red-500' : 'bg-emerald-500/60'"
+          :title="gateClosed ? 'Gate closed' : 'Gate open'"
+        />
+      </p>
       <ParamSlider label="Thresh" unit="dB" :min="-80" :max="0"
         :model-value="channel.params.gateThresholdDb" @update:model-value="set('gateThresholdDb', $event)" />
       <ParamSlider label="Range" unit="dB" :min="0" :max="60"
@@ -128,6 +143,18 @@ function set(key: NumericParamKey, value: number) {
         :model-value="channel.params.compReleaseMs" @update:model-value="set('compReleaseMs', $event)" />
       <ParamSlider label="Makeup" unit="dB" :min="0" :max="18"
         :model-value="channel.params.compMakeupDb" @update:model-value="set('compMakeupDb', $event)" />
+      <div class="mt-1 flex items-center gap-1.5 text-[10px] text-zinc-500">
+        <span>GR</span>
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+          <div
+            class="h-full bg-amber-400 transition-[width] duration-75 ease-linear"
+            :style="{ width: `${Math.min((compGr / 20) * 100, 100)}%` }"
+          />
+        </div>
+        <span class="w-10 text-right font-mono tabular-nums text-zinc-400">
+          -{{ compGr.toFixed(1) }}
+        </span>
+      </div>
     </div>
 
     <div class="border-t border-zinc-800 pt-1.5">

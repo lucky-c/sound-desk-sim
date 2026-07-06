@@ -70,6 +70,8 @@ let fxInput: GainNode | null = null
 let gateAvailable = false
 let dcas: DcaState[] = defaultDcas()
 const channelNodes = new Map<string, ChannelNodes>()
+/** Latest gate gain (linear) reported by each channel's gate worklet. */
+const gateGains = new Map<string, number>()
 
 let sourcesActive = false
 let looping = true
@@ -161,6 +163,9 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   if (gate instanceof AudioWorkletNode) {
     gate.parameters.get('threshold')!.value = p.gateThresholdDb
     gate.parameters.get('range')!.value = p.gateRangeDb
+    gate.port.onmessage = (e: MessageEvent) => {
+      gateGains.set(cfg.id, e.data as number)
+    }
   }
 
   const eqLow = c.createBiquadFilter()
@@ -530,6 +535,46 @@ export function getMasterAnalyser(): AnalyserNode | null {
 /** Current limiter gain reduction in dB (negative = limiting). */
 export function getLimiterReductionDb(): number {
   return limiter ? limiter.reduction : 0
+}
+
+/** Live dynamics readouts for a channel's GR meters. */
+export function getChannelDynamics(
+  id: string,
+): { compGrDb: number; gateGain: number } | null {
+  const nodes = channelNodes.get(id)
+  if (!nodes) return null
+  return {
+    compGrDb: nodes.comp.reduction,
+    gateGain: gateGains.get(id) ?? 1,
+  }
+}
+
+// Scratch buffers for getFrequencyResponse (reused across calls).
+let respMag: Float32Array<ArrayBuffer> | null = null
+let respPhase: Float32Array<ArrayBuffer> | null = null
+
+/**
+ * Combined magnitude response of a channel's filter section (low cut +
+ * 4 EQ bands) at the given frequencies — the strip's live EQ curve.
+ * Writes linear magnitudes into `out`; returns false if unavailable.
+ */
+export function getChannelEqResponse(
+  id: string,
+  freqs: Float32Array<ArrayBuffer>,
+  out: Float32Array<ArrayBuffer>,
+): boolean {
+  const nodes = channelNodes.get(id)
+  if (!nodes) return false
+  if (!respMag || respMag.length !== freqs.length) {
+    respMag = new Float32Array(freqs.length)
+    respPhase = new Float32Array(freqs.length)
+  }
+  out.fill(1)
+  for (const filter of [nodes.hpf, nodes.eqLow, nodes.eqLoMid, nodes.eqHiMid, nodes.eqHigh]) {
+    filter.getFrequencyResponse(freqs, respMag, respPhase!)
+    for (let i = 0; i < out.length; i++) out[i]! *= respMag[i]!
+  }
+  return true
 }
 
 // ---- stage spatialization ----
