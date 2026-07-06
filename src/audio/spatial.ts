@@ -54,6 +54,16 @@ export function computeSpatial(
   return { pan, dry, send }
 }
 
+// ---- PA speakers ----
+
+/** Default PA stack positions, just off the stage edges facing the audience. */
+export function defaultPaSpeakers(): { left: StagePosition; right: StagePosition } {
+  return { left: { x: -5.4, z: 2.2 }, right: { x: 5.4, z: 2.2 } }
+}
+
+/** Where PA stacks may be dragged (wider than the stage, front-ish). */
+export const PA_BOUNDS = { minX: -8, maxX: 8, minZ: 0.5, maxZ: 5 }
+
 // ---- mic bleed ----
 
 /**

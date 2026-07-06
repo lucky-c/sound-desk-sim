@@ -2,15 +2,18 @@ import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { RoomPreset, StagePosition } from '../audio/spatial'
 import {
+  PA_BOUNDS,
   STAGE_BOUNDS,
   computeBleedGain,
   computeSpatial,
+  defaultPaSpeakers,
   renderRoomIR,
   roomSpec,
 } from '../audio/spatial'
 import * as engine from '../audio/engine'
 import { engineState } from '../audio/engine'
-import { clamp } from '../lib/units'
+import { getInstrument } from '../audio/instruments'
+import { clamp, dbToLin } from '../lib/units'
 import { useMixerStore } from './mixer'
 
 /** Debounce for room-IR re-renders while the size slider moves. */
@@ -74,11 +77,58 @@ export const useStageStore = defineStore('stage', () => {
   /** Global bleed amount, 0..1: how leaky the stage mics are. */
   const bleedAmount = ref(0.5)
 
+  // ---- PA speakers + backline ----
+  const paSpeakers = reactive(defaultPaSpeakers())
+  /** Global acoustic (backline) level, 0..1: how loud the band is unamplified. */
+  const backlineAmount = ref(0.4)
+
+  function setPaSpeaker(side: 'left' | 'right', pos: StagePosition) {
+    paSpeakers[side] = {
+      x: clamp(pos.x, PA_BOUNDS.minX, PA_BOUNDS.maxX),
+      z: clamp(pos.z, PA_BOUNDS.minZ, PA_BOUNDS.maxZ),
+    }
+    pushPaSpeakers()
+  }
+
+  function pushPaSpeakers() {
+    if (!engineState.built) return
+    ;(['left', 'right'] as const).forEach((side, i) => {
+      const s = computeSpatial(paSpeakers[side])
+      engine.setPaSpeaker(i as 0 | 1, { pan: s.pan, gain: s.dry })
+    })
+  }
+
+  /** Push every plugged performer's console-free stage sound. */
+  function updateAcoustics() {
+    if (!engineState.built) return
+    for (const ch of mixer.channels) {
+      if (!ch.instrumentId) continue
+      const pos = positions[ch.id]
+      const inst = getInstrument(ch.instrumentId)
+      if (!pos || !inst) continue
+      const s = computeSpatial(pos)
+      engine.setAcoustic(
+        ch.id,
+        dbToLin(inst.acousticDb) * s.dry * backlineAmount.value,
+        s.pan,
+      )
+    }
+  }
+
+  function setBacklineAmount(v: number) {
+    backlineAmount.value = clamp(v, 0, 1)
+    scheduleStageAudio()
+  }
+
   let bleedTimer: ReturnType<typeof setTimeout> | undefined
   function scheduleBleeds() {
     clearTimeout(bleedTimer)
-    bleedTimer = setTimeout(updateAllBleeds, 80)
+    bleedTimer = setTimeout(() => {
+      updateAllBleeds()
+      updateAcoustics()
+    }, 80)
   }
+  const scheduleStageAudio = scheduleBleeds
 
   /** Push the full pairwise bleed matrix into the engine (plugged mics only). */
   function updateAllBleeds() {
@@ -157,6 +207,8 @@ export const useStageStore = defineStore('stage', () => {
       for (const id of Object.keys(positions)) pushSpatial(id)
       void applyRoom()
       updateAllBleeds()
+      updateAcoustics()
+      pushPaSpeakers()
     },
     { immediate: true },
   )
@@ -166,9 +218,13 @@ export const useStageStore = defineStore('stage', () => {
     roomPreset,
     roomSize,
     bleedAmount,
+    paSpeakers,
+    backlineAmount,
     setPosition,
     setRoomPreset,
     setRoomSize,
     setBleedAmount,
+    setPaSpeaker,
+    setBacklineAmount,
   }
 })

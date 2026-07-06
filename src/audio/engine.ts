@@ -21,11 +21,19 @@ import { createGateNode, ensureGateModule } from './gateWorklet'
  *   room bus: GainNode → ConvolverNode (synthesized IR) → GainNode (wet)
  *   → master bus
  *
- * Master bus:
+ * Master (PA) bus:
  *   masterFader (GainNode) → masterAnalyser (pre-limiter metering/clip tap)
- *   → SAFETY LIMITER (DynamicsCompressorNode as brickwall) → destination
+ *   → SAFETY LIMITER (DynamicsCompressorNode as brickwall)
+ *   → PA speaker section (per-side gain + pan from the draggable PA stacks)
+ *   → destination
  *
- * The limiter is always on and independent of every user control.
+ * Acoustic (backline) path — the band's own stage sound, console-free:
+ *   srcTap → acGain (instrument loudness × distance × backline control)
+ *   → acPanner (stage azimuth) → acoustic bus → analyser
+ *   → its own SAFETY LIMITER → destination
+ *
+ * Both paths end in an always-on brickwall limiter, independent of every
+ * user control.
  */
 
 interface ChannelNodes {
@@ -48,6 +56,9 @@ interface ChannelNodes {
   dryGain: GainNode
   sendGain: GainNode
   fxSend: GainNode
+  /** Acoustic (backline) path: raw source heard directly from the stage. */
+  acGain: GainNode
+  acPanner: StereoPannerNode
   /** Desk pan knob and stage-position pan, combined into panner.pan. */
   knobPan: number
   stagePan: number
@@ -69,6 +80,9 @@ let convolver: ConvolverNode | null = null
 let reverbWet: GainNode | null = null
 let currentWet = 0
 let fxInput: GainNode | null = null
+let paSpeakerNodes: { gain: GainNode; panner: StereoPannerNode }[] = []
+let acousticBus: GainNode | null = null
+let acousticAnalyser: AnalyserNode | null = null
 let gateAvailable = false
 let dcas: DcaState[] = defaultDcas()
 const channelNodes = new Map<string, ChannelNodes>()
@@ -122,7 +136,36 @@ function buildMaster(c: AudioContext): void {
 
   masterFader.connect(masterAnalyser)
   masterAnalyser.connect(limiter)
-  limiter.connect(c.destination)
+
+  // PA speaker section (post-limiter): the limited mix leaves through the
+  // two draggable PA stacks. Each side gets distance gain + azimuth pan
+  // from its stack's stage position; defaults reproduce plain stereo.
+  const paSplit = c.createChannelSplitter(2)
+  limiter.connect(paSplit)
+  paSpeakerNodes = [0, 1].map((side) => {
+    const gain = c.createGain()
+    const panner = c.createStereoPanner()
+    panner.pan.value = side === 0 ? -1 : 1
+    paSplit.connect(gain, side)
+    gain.connect(panner)
+    panner.connect(c.destination)
+    return { gain, panner }
+  })
+
+  // Acoustic (backline) bus: the band's own stage sound, bypassing the
+  // console entirely — with its own always-on safety limiter.
+  acousticBus = c.createGain()
+  acousticAnalyser = c.createAnalyser()
+  acousticAnalyser.fftSize = 2048
+  const acLimiter = c.createDynamicsCompressor()
+  acLimiter.threshold.value = -3
+  acLimiter.knee.value = 0
+  acLimiter.ratio.value = 20
+  acLimiter.attack.value = 0.003
+  acLimiter.release.value = 0.1
+  acousticBus.connect(acousticAnalyser)
+  acousticAnalyser.connect(acLimiter)
+  acLimiter.connect(c.destination)
 
   // Shared room-reverb bus. Feeds the master PRE-limiter, so the safety
   // limiter also protects against reverb build-up. Silent until a room
@@ -226,6 +269,14 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const fxSend = c.createGain()
   fxSend.gain.value = p.fxSendDb <= -59 ? 0 : dbToLin(p.fxSendDb)
 
+  // Acoustic path: raw source → level (set by the stage store) → azimuth pan.
+  const acGain = c.createGain()
+  acGain.gain.value = 0
+  const acPanner = c.createStereoPanner()
+  srcTap.connect(acGain)
+  acGain.connect(acPanner)
+  acPanner.connect(acousticBus!)
+
   srcTap.connect(input)
   input.connect(polarity)
   polarity.connect(hpf)
@@ -264,6 +315,8 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
     dryGain,
     sendGain,
     fxSend,
+    acGain,
+    acPanner,
     knobPan: p.pan,
     stagePan: 0,
     buffer: null,
@@ -695,6 +748,34 @@ export function setSpatial(
 }
 
 /**
+ * Position one PA stack (0 = left, 1 = right): distance gain + azimuth pan
+ * of the limited master mix leaving that side.
+ */
+export function setPaSpeaker(side: 0 | 1, s: { pan: number; gain: number }): void {
+  const nodes = paSpeakerNodes[side]
+  if (!nodes) return
+  ramp(nodes.panner.pan, s.pan)
+  ramp(nodes.gain.gain, s.gain)
+}
+
+/**
+ * Set a channel's acoustic (backline) contribution at FOH: level from
+ * instrument loudness × distance × the global backline control, panned by
+ * the performer's stage azimuth. Bypasses the console by design.
+ */
+export function setAcoustic(id: string, gain: number, pan: number): void {
+  const nodes = channelNodes.get(id)
+  if (!nodes) return
+  ramp(nodes.acGain.gain, gain)
+  ramp(nodes.acPanner.pan, pan)
+}
+
+/** Analyser on the acoustic bus (for verification/metering). */
+export function getAcousticAnalyser(): AnalyserNode | null {
+  return acousticAnalyser
+}
+
+/**
  * Swap the room impulse response. The wet gain is ducked around the buffer
  * swap (a ConvolverNode buffer change is instantaneous) to avoid a click.
  */
@@ -713,6 +794,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   ;(window as unknown as Record<string, unknown>).__engine = {
     getMasterAnalyser,
     getChannelAnalysers,
+    getAcousticAnalyser,
     getSampleRate,
     enableMonitorFeedback,
     disableMonitorFeedback,

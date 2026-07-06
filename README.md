@@ -109,6 +109,18 @@ tempo-matched delay bus (alongside the stage's reverb bus), **DCA assign
 buttons**, fader, meter, and mute/solo. Compact strips show pan + fader +
 M/S; expand with `+` for the full strip.
 
+The venue models **both sound paths a real audience hears**. The processed
+mix leaves through two **draggable PA stacks** at the stage edges — each
+side's level and image follow the stack's position relative to FOH (drag
+both to one side and hear the image move). And the band itself makes
+**acoustic stage sound (backline)**: drums, amps, and horns reach FOH
+directly from where the performers stand, completely bypassing the console —
+pull the master fader down and the drummer keeps playing. DI instruments
+(keys, pads, synths) have almost no stage sound. The *Backline* control in
+the venue panel scales this acoustic path, which has its own always-on
+safety limiter. This is the core FOH discipline the sim teaches: you don't
+mix the band, you mix the PA *around* the band.
+
 The stage also simulates **mic bleed**: every performer leaks into the other
 mics on stage, scaled by distance (inverse-square-ish, referenced to 0.5 m)
 and by the global *Mic bleed* control in the venue panel. Bleed enters each

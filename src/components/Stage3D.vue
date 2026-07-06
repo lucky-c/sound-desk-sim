@@ -240,12 +240,48 @@ onMounted(() => {
     syncPerformers,
   )
 
+  // ---- PA speaker stacks (draggable) ----
+  const paMeshes = {} as Record<'left' | 'right', THREE.Group>
+  for (const side of ['left', 'right'] as const) {
+    const group = new THREE.Group()
+    const cab = box(0.9, 1.5, 0.7, mat({ color: 0x18181c, roughness: 0.8 }))
+    cab.position.y = 0.75
+    cab.userData.paSide = side
+    pickable.push(cab)
+    group.add(cab)
+    const horn = box(0.7, 0.45, 0.55, mat({ color: 0x26262c, roughness: 0.6 }))
+    horn.position.y = 1.75
+    horn.userData.paSide = side
+    pickable.push(horn)
+    group.add(horn)
+    const led = new THREE.Mesh(
+      track(new THREE.SphereGeometry(0.06, 10, 10)),
+      mat({ color: 0x34d399, emissive: 0x34d399, emissiveIntensity: 1.2 }),
+    )
+    led.position.set(0, 1.35, 0.36)
+    group.add(led)
+    const label = labelSprite(side === 'left' ? 'PA L' : 'PA R', '#a1a1aa')
+    label.position.y = 2.4
+    group.add(label)
+    scene.add(group)
+    paMeshes[side] = group
+  }
+  function syncPaMeshes() {
+    for (const side of ['left', 'right'] as const) {
+      const pos = stage.paSpeakers[side]
+      paMeshes[side].position.set(pos.x, 0, pos.z)
+    }
+  }
+  syncPaMeshes()
+  const stopPaSync = watch(() => JSON.stringify(stage.paSpeakers), syncPaMeshes)
+
   // ---- drag interaction ----
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2()
   const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   const hitPoint = new THREE.Vector3()
   let dragId: string | null = null
+  let dragPa: 'left' | 'right' | null = null
 
   function setNdc(ev: PointerEvent) {
     const rect = renderer.domElement.getBoundingClientRect()
@@ -269,29 +305,38 @@ onMounted(() => {
     raycaster.setFromCamera(ndc, camera)
     const hit = raycaster.intersectObjects(pickable, false)[0]
     const id = hit?.object.userData.channelId as string | undefined
-    if (!id) return
+    const pa = hit?.object.userData.paSide as 'left' | 'right' | undefined
+    if (!id && !pa) return
     ev.preventDefault()
-    dragId = id
-    dragReadout.value = describe(id)
+    dragId = id ?? null
+    dragPa = pa ?? null
+    dragReadout.value = id ? describe(id) : `PA ${pa === 'left' ? 'left' : 'right'} stack`
     controls.enabled = false
     renderer.domElement.setPointerCapture(ev.pointerId)
   }
 
   function onPointerMove(ev: PointerEvent) {
-    if (!dragId) return
+    if (!dragId && !dragPa) return
     setNdc(ev)
     raycaster.setFromCamera(ndc, camera)
     if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return
-    stage.setPosition(dragId, {
-      x: clamp(hitPoint.x, STAGE_BOUNDS.minX, STAGE_BOUNDS.maxX),
-      z: clamp(hitPoint.z, STAGE_BOUNDS.minZ, STAGE_BOUNDS.maxZ),
-    })
-    dragReadout.value = describe(dragId)
+    if (dragId) {
+      stage.setPosition(dragId, {
+        x: clamp(hitPoint.x, STAGE_BOUNDS.minX, STAGE_BOUNDS.maxX),
+        z: clamp(hitPoint.z, STAGE_BOUNDS.minZ, STAGE_BOUNDS.maxZ),
+      })
+      dragReadout.value = describe(dragId)
+    } else if (dragPa) {
+      stage.setPaSpeaker(dragPa, { x: hitPoint.x, z: hitPoint.z })
+      const pos = stage.paSpeakers[dragPa]
+      dragReadout.value = `PA ${dragPa}: ${pos.x.toFixed(1)}m · ${pos.z.toFixed(1)}m`
+    }
   }
 
   function onPointerUp(ev: PointerEvent) {
-    if (!dragId) return
+    if (!dragId && !dragPa) return
     dragId = null
+    dragPa = null
     dragReadout.value = null
     controls.enabled = true
     renderer.domElement.releasePointerCapture(ev.pointerId)
@@ -332,7 +377,20 @@ onMounted(() => {
   loop()
 
   if (import.meta.env.DEV) {
+    ;(window as unknown as Record<string, unknown>).__stageStore = stage
     ;(window as unknown as Record<string, unknown>).__stage3d = {
+      projectPa(side: 'left' | 'right') {
+        const g = paMeshes[side]
+        const v = new THREE.Vector3()
+        g.getWorldPosition(v)
+        v.y = 1
+        v.project(camera)
+        const rect = renderer.domElement.getBoundingClientRect()
+        return {
+          x: rect.left + ((v.x + 1) / 2) * rect.width,
+          y: rect.top + ((1 - v.y) / 2) * rect.height,
+        }
+      },
       project(channelId: string) {
         const p = performers.get(channelId)
         if (!p) return null
@@ -353,6 +411,7 @@ onMounted(() => {
     stopPosSync()
     stopPlugSync()
     stopRoomSync()
+    stopPaSync()
     ro.disconnect()
     renderer.domElement.removeEventListener('pointerdown', onPointerDown)
     renderer.domElement.removeEventListener('pointermove', onPointerMove)
@@ -424,6 +483,21 @@ onMounted(() => {
           :decimals="0"
           :model-value="stage.bleedAmount * 100"
           @update:model-value="stage.setBleedAmount($event / 100)"
+        />
+      </div>
+      <div
+        class="w-44"
+        title="The band's own acoustic stage sound (drums, amps, horns) heard at FOH without the PA. DI instruments are near-silent. You mix the PA around this."
+      >
+        <ParamSlider
+          label="Backline"
+          unit="%"
+          :min="0"
+          :max="100"
+          :step="1"
+          :decimals="0"
+          :model-value="stage.backlineAmount * 100"
+          @update:model-value="stage.setBacklineAmount($event / 100)"
         />
       </div>
       <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>

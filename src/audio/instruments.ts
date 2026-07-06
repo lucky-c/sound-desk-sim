@@ -35,6 +35,12 @@ export interface Instrument {
   id: string
   name: string
   color: string
+  /**
+   * How loud the instrument is ACOUSTICALLY on stage (dB relative to its
+   * stem), before any PA. Drums and horns carry; amps are moderate; DI
+   * instruments (keys, pads, synths) make almost no stage sound.
+   */
+  acousticDb: number
   build: (off: OfflineAudioContext) => void
 }
 
@@ -348,18 +354,18 @@ function buildCowbell(off: OfflineAudioContext): void {
 // ---- registry ----
 
 export const INSTRUMENTS: Instrument[] = [
-  { id: 'kick', name: 'Kick', color: '#f59e0b', build: buildKick },
-  { id: 'snare', name: 'Snare', color: '#fb7185', build: buildSnare },
-  { id: 'hats', name: 'Hi-hats', color: '#facc15', build: buildHats },
-  { id: 'shaker', name: 'Shaker', color: '#a3e635', build: buildShaker },
-  { id: 'bass', name: 'Bass', color: '#22d3ee', build: buildBass },
-  { id: 'guitar', name: 'Rhythm Gtr', color: '#fb923c', build: buildGuitar },
-  { id: 'guitar-lead', name: 'Lead Gtr', color: '#ef4444', build: buildGuitarLead },
-  { id: 'keys', name: 'Keys', color: '#a78bfa', build: buildKeys },
-  { id: 'pad', name: 'Pad', color: '#818cf8', build: buildPad },
-  { id: 'brass', name: 'Brass', color: '#eab308', build: buildBrass },
-  { id: 'lead', name: 'Lead Synth', color: '#f472b6', build: buildLead },
-  { id: 'cowbell', name: 'Cowbell', color: '#2dd4bf', build: buildCowbell },
+  { id: 'kick', name: 'Kick', color: '#f59e0b', acousticDb: -6, build: buildKick },
+  { id: 'snare', name: 'Snare', color: '#fb7185', acousticDb: -4, build: buildSnare },
+  { id: 'hats', name: 'Hi-hats', color: '#facc15', acousticDb: -8, build: buildHats },
+  { id: 'shaker', name: 'Shaker', color: '#a3e635', acousticDb: -16, build: buildShaker },
+  { id: 'bass', name: 'Bass', color: '#22d3ee', acousticDb: -14, build: buildBass },
+  { id: 'guitar', name: 'Rhythm Gtr', color: '#fb923c', acousticDb: -12, build: buildGuitar },
+  { id: 'guitar-lead', name: 'Lead Gtr', color: '#ef4444', acousticDb: -12, build: buildGuitarLead },
+  { id: 'keys', name: 'Keys', color: '#a78bfa', acousticDb: -60, build: buildKeys },
+  { id: 'pad', name: 'Pad', color: '#818cf8', acousticDb: -60, build: buildPad },
+  { id: 'brass', name: 'Brass', color: '#eab308', acousticDb: -4, build: buildBrass },
+  { id: 'lead', name: 'Lead Synth', color: '#f472b6', acousticDb: -60, build: buildLead },
+  { id: 'cowbell', name: 'Cowbell', color: '#2dd4bf', acousticDb: -8, build: buildCowbell },
 ]
 
 export function getInstrument(id: string | null): Instrument | null {
