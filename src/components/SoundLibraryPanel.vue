@@ -11,6 +11,10 @@ import { SPB } from '../audio/instruments'
 
 const library = useSoundLibraryStore()
 
+/** Cap uploads so a stray huge file can't exhaust the browser's storage
+ *  quota or stall decoding. Loops/stems are comfortably under this. */
+const MAX_UPLOAD_BYTES = 30 * 1024 * 1024
+
 const name = ref('')
 const beats = ref(16)
 const durationSec = ref<number | null>(null)
@@ -28,9 +32,17 @@ function ctx(): OfflineAudioContext {
 async function onPick(event: Event) {
   error.value = ''
   const picked = (event.target as HTMLInputElement).files?.[0] ?? null
-  file.value = picked
   durationSec.value = null
-  if (!picked) return
+  if (!picked) {
+    file.value = null
+    return
+  }
+  if (picked.size > MAX_UPLOAD_BYTES) {
+    error.value = `That file is too large (${(picked.size / 1024 / 1024).toFixed(1)} MB). Max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`
+    file.value = null
+    return
+  }
+  file.value = picked
   name.value = picked.name.replace(/\.[^.]+$/, '')
   try {
     const buf = await ctx().decodeAudioData(await picked.slice().arrayBuffer())
