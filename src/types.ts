@@ -47,6 +47,13 @@ export interface ChannelParams {
   /** Send into the FX (tempo delay) bus in dB (-60 = off). */
   fxSendDb: number
 
+  /**
+   * Pseudo-stereo width, 0..100%. 0 = mono/neutral (no widening); higher
+   * spreads the (mostly mono) source into a wider stereo image via a
+   * decorrelated, mono-compatible side signal.
+   */
+  widthPct: number
+
   /** DCA group membership, bits 0–3 = DCA 1–4. */
   dcaMask: number
 
@@ -84,6 +91,7 @@ export const NUMERIC_PARAM_KEYS = [
   'compMakeupDb',
   'pan',
   'fxSendDb',
+  'widthPct',
   'dcaMask',
   'faderDb',
 ] as const satisfies readonly NumericParamKey[]
@@ -113,6 +121,7 @@ export function neutralParams(): ChannelParams {
     compMakeupDb: 0,
     pan: 0,
     fxSendDb: -60,
+    widthPct: 0,
     dcaMask: 0,
     faderDb: -8,
     mute: false,

@@ -2,6 +2,8 @@ import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { RoomPreset, StagePosition } from '../audio/spatial'
 import {
+  FOH_BOUNDS,
+  FOH_POS,
   PA_BOUNDS,
   STAGE_BOUNDS,
   computeBleedGain,
@@ -59,9 +61,23 @@ export const useStageStore = defineStore('stage', () => {
   const roomPreset = ref<RoomPreset>('club')
   const roomSize = ref(1)
 
+  /** The listening (mix) position. Dragging the FOH desk moves this, which
+   *  re-pans and re-levels every performer, the PA, and the backline. */
+  const fohPos = reactive<StagePosition>({ ...FOH_POS })
+
   function pushSpatial(id: string) {
     const pos = positions[id]
-    if (pos) engine.setSpatial(id, computeSpatial(pos))
+    if (pos) engine.setSpatial(id, computeSpatial(pos, fohPos))
+  }
+
+  /** Move the FOH desk and re-push everything computed relative to it. */
+  function setFohPos(pos: StagePosition) {
+    fohPos.x = clamp(pos.x, FOH_BOUNDS.minX, FOH_BOUNDS.maxX)
+    fohPos.z = clamp(pos.z, FOH_BOUNDS.minZ, FOH_BOUNDS.maxZ)
+    if (!engineState.built) return
+    for (const id of Object.keys(positions)) pushSpatial(id)
+    pushPaSpeakers()
+    updateAcoustics()
   }
 
   function setPosition(id: string, pos: StagePosition) {
@@ -98,7 +114,7 @@ export const useStageStore = defineStore('stage', () => {
   function pushPaSpeakers() {
     if (!engineState.built) return
     ;(['left', 'right'] as const).forEach((side, i) => {
-      const s = computeSpatial(paSpeakers[side])
+      const s = computeSpatial(paSpeakers[side], fohPos)
       engine.setPaSpeaker(i as 0 | 1, { pan: s.pan, gain: s.dry })
     })
   }
@@ -111,7 +127,7 @@ export const useStageStore = defineStore('stage', () => {
       const pos = positions[ch.id]
       const inst = getInstrumentMeta(ch.instrumentId)
       if (!pos || !inst) continue
-      const s = computeSpatial(pos)
+      const s = computeSpatial(pos, fohPos)
       engine.setAcoustic(
         ch.id,
         dbToLin(inst.acousticDb) * s.dry * backlineAmount.value,
@@ -220,12 +236,14 @@ export const useStageStore = defineStore('stage', () => {
 
   return {
     positions,
+    fohPos,
     roomPreset,
     roomSize,
     bleedAmount,
     paSpeakers,
     backlineAmount,
     setPosition,
+    setFohPos,
     setRoomPreset,
     setRoomSize,
     setBleedAmount,

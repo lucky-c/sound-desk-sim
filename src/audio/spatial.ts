@@ -15,8 +15,11 @@ export interface StagePosition {
   z: number
 }
 
-/** The fixed front-of-house listening position, out in the audience. */
+/** The default front-of-house listening position, out in the audience. */
 export const FOH_POS: Readonly<StagePosition> = { x: 0, z: 8 }
+
+/** Where the FOH desk may be dragged: out in the audience, in front of stage. */
+export const FOH_BOUNDS = { minX: -6, maxX: 6, minZ: 3, maxZ: 13 }
 
 /** Playable stage area (drag clamps to this). */
 export const STAGE_BOUNDS = { minX: -4.5, maxX: 4.5, minZ: -3.5, maxZ: 1.5 }

@@ -7,7 +7,6 @@ import { useStageStore } from '../stores/stage'
 import { useMeters } from '../composables/useMeters'
 import { clamp, linToDb } from '../lib/units'
 import {
-  FOH_POS,
   ROOM_PRESETS,
   ROOM_SIZE_RANGE,
   STAGE_BOUNDS,
@@ -97,19 +96,33 @@ onMounted(() => {
   audienceFloor.position.set(0, -0.5, 11)
   scene.add(audienceFloor)
 
-  // FOH desk marker (the fixed listening position)
+  // Objects the raycaster can grab (performers, PA stacks, FOH desk).
+  let pickable: THREE.Object3D[] = []
+
+  // FOH desk marker — the listening position, now draggable.
   const foh = new THREE.Group()
   const fohDesk = box(1.6, 0.5, 0.8, mat({ color: 0x3f3f46, roughness: 0.6 }))
   fohDesk.position.y = 0.25 - 0.45
+  fohDesk.userData.foh = true
+  pickable.push(fohDesk)
   foh.add(fohDesk)
   const fohLight = new THREE.Mesh(
     track(new THREE.SphereGeometry(0.12, 12, 12)),
     mat({ color: 0x34d399, emissive: 0x34d399, emissiveIntensity: 1.2 }),
   )
   fohLight.position.y = 0.15
+  fohLight.userData.foh = true
+  pickable.push(fohLight)
   foh.add(fohLight)
-  foh.position.set(FOH_POS.x, 0, FOH_POS.z)
+  const fohLabel = labelSprite('FOH', '#34d399')
+  fohLabel.position.y = 0.9
+  foh.add(fohLabel)
+  foh.position.set(stage.fohPos.x, 0, stage.fohPos.z)
   scene.add(foh)
+  function syncFoh() {
+    foh.position.set(stage.fohPos.x, 0, stage.fohPos.z)
+  }
+  const stopFohSync = watch(() => [stage.fohPos.x, stage.fohPos.z], syncFoh)
 
   // Room walls: scale with room size, hidden for open-air.
   const wallMat = mat({
@@ -169,7 +182,6 @@ onMounted(() => {
     body: THREE.Mesh
   }
   const performers = new Map<string, Performer>()
-  let pickable: THREE.Object3D[] = []
 
   function addPerformer(id: string, instrumentId: string, name: string, colorHex: string) {
     const color = new THREE.Color(colorHex)
@@ -282,6 +294,7 @@ onMounted(() => {
   const hitPoint = new THREE.Vector3()
   let dragId: string | null = null
   let dragPa: 'left' | 'right' | null = null
+  let dragFoh = false
 
   function setNdc(ev: PointerEvent) {
     const rect = renderer.domElement.getBoundingClientRect()
@@ -306,21 +319,31 @@ onMounted(() => {
     const hit = raycaster.intersectObjects(pickable, false)[0]
     const id = hit?.object.userData.channelId as string | undefined
     const pa = hit?.object.userData.paSide as 'left' | 'right' | undefined
-    if (!id && !pa) return
+    const isFoh = hit?.object.userData.foh === true
+    if (!id && !pa && !isFoh) return
     ev.preventDefault()
     dragId = id ?? null
     dragPa = pa ?? null
-    dragReadout.value = id ? describe(id) : `PA ${pa === 'left' ? 'left' : 'right'} stack`
+    dragFoh = isFoh
+    dragReadout.value = id
+      ? describe(id)
+      : pa
+        ? `PA ${pa} stack`
+        : 'FOH desk (your ears)'
     controls.enabled = false
     renderer.domElement.setPointerCapture(ev.pointerId)
   }
 
   function onPointerMove(ev: PointerEvent) {
-    if (!dragId && !dragPa) return
+    if (!dragId && !dragPa && !dragFoh) return
     setNdc(ev)
     raycaster.setFromCamera(ndc, camera)
     if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return
-    if (dragId) {
+    if (dragFoh) {
+      stage.setFohPos({ x: hitPoint.x, z: hitPoint.z })
+      const p = stage.fohPos
+      dragReadout.value = `FOH: ${p.x.toFixed(1)}m · ${p.z.toFixed(1)}m from stage`
+    } else if (dragId) {
       stage.setPosition(dragId, {
         x: clamp(hitPoint.x, STAGE_BOUNDS.minX, STAGE_BOUNDS.maxX),
         z: clamp(hitPoint.z, STAGE_BOUNDS.minZ, STAGE_BOUNDS.maxZ),
@@ -334,9 +357,10 @@ onMounted(() => {
   }
 
   function onPointerUp(ev: PointerEvent) {
-    if (!dragId && !dragPa) return
+    if (!dragId && !dragPa && !dragFoh) return
     dragId = null
     dragPa = null
+    dragFoh = false
     dragReadout.value = null
     controls.enabled = true
     renderer.domElement.releasePointerCapture(ev.pointerId)
@@ -412,6 +436,7 @@ onMounted(() => {
     stopPlugSync()
     stopRoomSync()
     stopPaSync()
+    stopFohSync()
     ro.disconnect()
     renderer.domElement.removeEventListener('pointerdown', onPointerDown)
     renderer.domElement.removeEventListener('pointermove', onPointerMove)
@@ -509,9 +534,10 @@ onMounted(() => {
       </button>
       <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>
       <p class="max-w-44 border-t border-zinc-800 pt-1.5 text-[10px] leading-snug text-zinc-600">
-        Drag performers — or the PA stacks — to move them; position changes
-        pan, level, and room. Green marker = FOH, your ears. Drag empty space
-        to orbit · scroll to zoom.
+        Drag performers, the PA stacks, or the green FOH desk (your ears) to
+        move them; positions change pan, level, and room. Moving FOH re-mixes
+        the whole stage around your new spot. Drag empty space to orbit ·
+        scroll to zoom.
       </p>
     </div>
   </div>

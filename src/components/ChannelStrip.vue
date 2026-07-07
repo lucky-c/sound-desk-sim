@@ -153,6 +153,8 @@ function set(key: NumericParamKey, value: number) {
       <div class="flex flex-col items-center gap-1.5 rounded-md bg-zinc-950/60 p-1.5">
         <RotaryKnob label="Pan" unit="" :min="-1" :max="1" :decimals="2"
           :model-value="channel.params.pan" @update:model-value="set('pan', $event)" />
+        <RotaryKnob label="Width" unit="%" :min="0" :max="100" :decimals="0"
+          :model-value="channel.params.widthPct" @update:model-value="set('widthPct', $event)" />
         <RotaryKnob label="FX dly" unit="dB" :min="-60" :max="0" :decimals="0"
           :model-value="channel.params.fxSendDb" @update:model-value="set('fxSendDb', $event)" />
         <div class="flex items-center gap-0.5">
