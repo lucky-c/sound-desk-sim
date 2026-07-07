@@ -1,4 +1,4 @@
-# sound-desk-sim
+# Sound Desk Sim
 
 A live-sound mixing desk that runs in your browser. Put a band on a virtual
 stage, drag the performers around, and mix them through a real channel strip —
@@ -7,6 +7,8 @@ knob does by turning it.
 
 Built with Vue 3, Pinia, and the Web Audio API. No plugins, no backend,
 installable as a PWA.
+
+![Sound Desk Sim — 3D stage with performers, venue controls, a challenge panel, and the mixing console](docs/screenshot.png)
 
 ## Quick start
 
