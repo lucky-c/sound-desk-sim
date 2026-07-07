@@ -7,7 +7,7 @@ import { uiState, closePanels } from './uiState'
  * suppresses everything but Escape, so scene names etc. aren't hijacked.
  *
  *   Space  play / pause        C  console        M  mute focused channel
- *   L      loop on/off         R  RTA            S  solo focused channel
+ *   L      loop on/off         R  RTA            N  solo focused channel
  *   1–4    recall scene        Esc close panels  F  recenter camera
  *   ⇧1–4   save scene          ?  this help
  */
@@ -57,9 +57,8 @@ export function useHotkeys() {
       case 'KeyM':
         if (uiState.focusedChannelId) mixer.toggleMute(uiState.focusedChannelId)
         return
-      case 'KeyS':
-        // Over the stage, S is WASD "move back" (handled in Stage3D).
-        if (uiState.stageActive) return
+      case 'KeyN':
+        // Solo lives on N (beside M) so WASD's S is free for the camera.
         if (uiState.focusedChannelId) mixer.toggleSolo(uiState.focusedChannelId)
         return
     }

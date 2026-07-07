@@ -24,7 +24,7 @@ const HOTKEYS: [string, string][] = [
   ['L', 'Loop on / off'],
   ['C', 'Toggle console'],
   ['R', 'Toggle RTA'],
-  ['M / S', 'Mute / solo focused channel'],
+  ['M / N', 'Mute / solo focused channel'],
   ['F', 'Recenter camera'],
   ['W A S D', 'Move camera'],
   ['1–4', 'Recall scene'],
