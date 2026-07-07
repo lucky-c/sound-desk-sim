@@ -2,8 +2,11 @@ import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { RoomPreset, StagePosition } from '../audio/spatial'
 import {
+  FOH_BOUNDS,
+  FOH_POS,
   PA_BOUNDS,
   STAGE_BOUNDS,
+  STAGE_OFFSET_BOUNDS,
   computeBleedGain,
   computeSpatial,
   defaultPaSpeakers,
@@ -59,9 +62,44 @@ export const useStageStore = defineStore('stage', () => {
   const roomPreset = ref<RoomPreset>('club')
   const roomSize = ref(1)
 
+  /** The listening (mix) position. Dragging the FOH desk moves this, which
+   *  re-pans and re-levels every performer, the PA, and the backline. */
+  const fohPos = reactive<StagePosition>({ ...FOH_POS })
+
+  /** How far the whole stage is slid from origin. A performer's world
+   *  position is its on-deck position plus this; sliding the stage moves the
+   *  entire band together (relative spacing — and so mic bleed — is kept). */
+  const stageOffset = reactive<StagePosition>({ x: 0, z: 0 })
+
+  /** A performer's world position: on-deck position translated by the stage. */
+  function worldPos(pos: StagePosition): StagePosition {
+    return { x: pos.x + stageOffset.x, z: pos.z + stageOffset.z }
+  }
+
   function pushSpatial(id: string) {
     const pos = positions[id]
-    if (pos) engine.setSpatial(id, computeSpatial(pos))
+    if (pos) engine.setSpatial(id, computeSpatial(worldPos(pos), fohPos))
+  }
+
+  /** Slide the whole stage and re-mix everyone relative to the fixed FOH/PA. */
+  function setStageOffset(o: StagePosition) {
+    stageOffset.x = clamp(o.x, STAGE_OFFSET_BOUNDS.minX, STAGE_OFFSET_BOUNDS.maxX)
+    stageOffset.z = clamp(o.z, STAGE_OFFSET_BOUNDS.minZ, STAGE_OFFSET_BOUNDS.maxZ)
+    if (!engineState.built) return
+    for (const id of Object.keys(positions)) pushSpatial(id)
+    updateAcoustics()
+    // Mic bleed depends only on inter-performer distance, which the shared
+    // translation preserves — no need to recompute it here.
+  }
+
+  /** Move the FOH desk and re-push everything computed relative to it. */
+  function setFohPos(pos: StagePosition) {
+    fohPos.x = clamp(pos.x, FOH_BOUNDS.minX, FOH_BOUNDS.maxX)
+    fohPos.z = clamp(pos.z, FOH_BOUNDS.minZ, FOH_BOUNDS.maxZ)
+    if (!engineState.built) return
+    for (const id of Object.keys(positions)) pushSpatial(id)
+    pushPaSpeakers()
+    updateAcoustics()
   }
 
   function setPosition(id: string, pos: StagePosition) {
@@ -98,7 +136,7 @@ export const useStageStore = defineStore('stage', () => {
   function pushPaSpeakers() {
     if (!engineState.built) return
     ;(['left', 'right'] as const).forEach((side, i) => {
-      const s = computeSpatial(paSpeakers[side])
+      const s = computeSpatial(paSpeakers[side], fohPos)
       engine.setPaSpeaker(i as 0 | 1, { pan: s.pan, gain: s.dry })
     })
   }
@@ -111,7 +149,7 @@ export const useStageStore = defineStore('stage', () => {
       const pos = positions[ch.id]
       const inst = getInstrumentMeta(ch.instrumentId)
       if (!pos || !inst) continue
-      const s = computeSpatial(pos)
+      const s = computeSpatial(worldPos(pos), fohPos)
       engine.setAcoustic(
         ch.id,
         dbToLin(inst.acousticDb) * s.dry * backlineAmount.value,
@@ -220,12 +258,16 @@ export const useStageStore = defineStore('stage', () => {
 
   return {
     positions,
+    fohPos,
+    stageOffset,
+    setStageOffset,
     roomPreset,
     roomSize,
     bleedAmount,
     paSpeakers,
     backlineAmount,
     setPosition,
+    setFohPos,
     setRoomPreset,
     setRoomSize,
     setBleedAmount,

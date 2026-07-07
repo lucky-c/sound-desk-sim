@@ -53,6 +53,9 @@ interface ChannelNodes {
   makeup: GainNode
   fader: GainNode
   analyser: AnalyserNode
+  /** Pseudo-stereo widener: +side into L, −side into R (scaled by width). */
+  widthSidePos: GainNode
+  widthSideNeg: GainNode
   panner: StereoPannerNode
   dryGain: GainNode
   sendGain: GainNode
@@ -73,6 +76,15 @@ interface ChannelNodes {
 const RAMP_TC = 0.02
 /** How strongly the performer's stage position pans, under the knob. */
 const STAGE_PAN_WEIGHT = 0.6
+/** Decorrelation delay (s) feeding the pseudo-stereo side signal. */
+const WIDTH_DELAY_S = 0.012
+/** Side coefficient at 100% width (kept < 1 so the widest setting is sane). */
+const WIDTH_MAX = 0.9
+
+/** Side-signal gain (±) for a given width percentage, 0..100. */
+function widthSideGain(widthPct: number): number {
+  return (clamp(widthPct, 0, 100) / 100) * WIDTH_MAX
+}
 
 let ctx: AudioContext | null = null
 let masterFader: GainNode | null = null
@@ -264,6 +276,19 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   const analyser = c.createAnalyser()
   analyser.fftSize = 2048
 
+  // Pseudo-stereo widener (mono-compatible): the mid (mono) feeds both sides
+  // equally; a short-delayed, decorrelated copy is added to L and subtracted
+  // from R. L+R cancels the side, so a mono sum is unchanged.
+  const widthMid = c.createGain()
+  const widthDelay = c.createDelay(0.05)
+  widthDelay.delayTime.value = WIDTH_DELAY_S
+  const side = widthSideGain(p.widthPct)
+  const widthSidePos = c.createGain()
+  widthSidePos.gain.value = side
+  const widthSideNeg = c.createGain()
+  widthSideNeg.gain.value = -side
+  const widthMerger = c.createChannelMerger(2)
+
   const panner = c.createStereoPanner()
   panner.pan.value = clamp(p.pan, -1, 1)
   const dryGain = c.createGain()
@@ -292,7 +317,16 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
   comp.connect(makeup)
   makeup.connect(fader)
   fader.connect(analyser)
-  analyser.connect(panner)
+  // Width network: analyser → (mid + decorrelated side) → merger → panner.
+  analyser.connect(widthMid)
+  widthMid.connect(widthMerger, 0, 0)
+  widthMid.connect(widthMerger, 0, 1)
+  analyser.connect(widthDelay)
+  widthDelay.connect(widthSidePos)
+  widthDelay.connect(widthSideNeg)
+  widthSidePos.connect(widthMerger, 0, 0)
+  widthSideNeg.connect(widthMerger, 0, 1)
+  widthMerger.connect(panner)
   panner.connect(dryGain)
   dryGain.connect(masterFader!)
   analyser.connect(sendGain)
@@ -314,6 +348,8 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
     makeup,
     fader,
     analyser,
+    widthSidePos,
+    widthSideNeg,
     panner,
     dryGain,
     sendGain,
@@ -569,6 +605,12 @@ export function setChannelParam(id: string, key: NumericParamKey, value: number)
     case 'fxSendDb':
       ramp(nodes.fxSend.gain, value <= -59 ? 0 : dbToLin(value))
       break
+    case 'widthPct': {
+      const side = widthSideGain(value)
+      ramp(nodes.widthSidePos.gain, side)
+      ramp(nodes.widthSideNeg.gain, -side)
+      break
+    }
     case 'dcaMask':
     case 'faderDb':
       // Effective level depends on mute/solo/DCA state — see updateMixGains.
