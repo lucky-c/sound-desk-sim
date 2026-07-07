@@ -373,7 +373,9 @@ function applyPan(nodes: ChannelNodes): void {
 async function loadBuffer(c: AudioContext, instrumentId: string): Promise<AudioBuffer | null> {
   for (const ext of ['wav', 'mp3']) {
     try {
-      const res = await fetch(`/stems/${instrumentId}.${ext}`)
+      // Base-relative so drop-in stems also resolve when the app is served
+      // from a subpath (e.g. GitHub Pages project sites).
+      const res = await fetch(`${import.meta.env.BASE_URL}stems/${instrumentId}.${ext}`)
       const type = res.headers.get('content-type') ?? ''
       if (!res.ok || type.includes('text/html')) continue
       const bytes = await res.arrayBuffer()
