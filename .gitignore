@@ -141,3 +141,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# macOS
+.DS_Store
+
+# Vite / local env
+*.local
+
+# PWA dev artifacts (vite-plugin-pwa)
+dev-dist

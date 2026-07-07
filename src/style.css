@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+html {
+  color-scheme: dark;
+}
+
+/* Slightly chunkier range inputs — these are the mixer's controls. */
+input[type="range"] {
+  cursor: pointer;
+}
