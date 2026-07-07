@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useMixerStore } from '../stores/mixer'
 import { uiState } from '../composables/uiState'
+import { usePanelResize } from '../composables/usePanelResize'
 import { clamp, logToPos, posToLog } from '../lib/units'
 import type { NumericParamKey } from '../types'
 import {
@@ -28,6 +29,7 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 
 const W = 560
 const H = 240
+const { scale, onResizeDown, onResizeMove } = usePanelResize('sds.eqScale', W)
 const FMIN = 20
 const FMAX = 20000
 const GAIN_DB = 18 // ± y-range of the curve/handles
@@ -249,7 +251,7 @@ onUnmounted(() => cancelAnimationFrame(raf))
 
 <template>
   <div
-    class="w-[592px] max-w-[94vw] rounded-lg border border-zinc-800 bg-zinc-950/95 p-3 backdrop-blur"
+    class="relative w-fit max-w-[94vw] rounded-lg border border-zinc-800 bg-zinc-950/95 p-3 backdrop-blur"
   >
     <div class="mb-2 flex items-center gap-2">
       <p class="text-[10px] uppercase tracking-wide text-zinc-500">Channel EQ</p>
@@ -270,16 +272,25 @@ onUnmounted(() => cancelAnimationFrame(raf))
         Close
       </button>
     </div>
-    <canvas
-      ref="canvas"
-      class="block cursor-crosshair touch-none"
-      :style="{ width: `${W}px`, height: `${H}px` }"
-      @pointerdown="onPointerDown"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
-      @wheel="onWheel"
-    />
+    <div class="relative w-fit">
+      <canvas
+        ref="canvas"
+        class="block cursor-crosshair touch-none"
+        :style="{ width: `${W * scale}px`, height: `${H * scale}px` }"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+        @wheel="onWheel"
+      />
+      <!-- resize handle -->
+      <div
+        class="absolute bottom-1 right-1 h-3 w-3 cursor-nwse-resize rounded-sm border-b-2 border-r-2 border-zinc-600 hover:border-emerald-500"
+        title="Drag to resize"
+        @pointerdown="onResizeDown"
+        @pointermove="onResizeMove"
+      />
+    </div>
     <div class="mt-1.5 flex gap-3">
       <span
         v-for="band in BANDS"

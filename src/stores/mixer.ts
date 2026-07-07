@@ -11,6 +11,7 @@ import type {
 import { DCA_COUNT, NUMERIC_PARAM_KEYS, defaultDcas, neutralParams } from '../types'
 import { getInstrument, getInstrumentMeta } from '../audio/instruments'
 import * as engine from '../audio/engine'
+import * as scenesStore from '../audio/scenesStore'
 
 /**
  * Single source of truth for every audio parameter. Components mutate ONLY
@@ -178,9 +179,26 @@ export const useMixerStore = defineStore('mixer', {
       engine.updateMixGains(this.channels)
     },
 
+    /** Restore persisted scene slots from IndexedDB (call once at startup). */
+    async initScenes() {
+      const persisted = await scenesStore.loadScenes(this.scenes.length)
+      // Don't clobber a scene the user saved before the load resolved.
+      persisted.forEach((scene, i) => {
+        if (scene && !this.scenes[i]) this.scenes[i] = scene
+      })
+    },
+
     saveScene(slot: number) {
       if (slot < 0 || slot >= this.scenes.length) return
-      this.scenes[slot] = { snap: this.snapshot(), plugging: this.plugMap() }
+      const scene: Scene = { snap: this.snapshot(), plugging: this.plugMap() }
+      this.scenes[slot] = scene
+      void scenesStore.saveScene(slot, scene)
+    },
+
+    clearScene(slot: number) {
+      if (slot < 0 || slot >= this.scenes.length) return
+      this.scenes[slot] = null
+      void scenesStore.deleteScene(slot)
     },
 
     recallScene(slot: number) {

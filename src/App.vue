@@ -2,6 +2,8 @@
 import { defineAsyncComponent, ref } from 'vue'
 import { useMixerStore } from './stores/mixer'
 import { useSoundLibraryStore } from './stores/soundLibrary'
+import { uiState } from './composables/uiState'
+import { useHotkeys } from './composables/useHotkeys'
 import MixerDrawer from './components/MixerDrawer.vue'
 import ChallengePanel from './components/ChallengePanel.vue'
 
@@ -10,8 +12,26 @@ const Stage3D = defineAsyncComponent(() => import('./components/Stage3D.vue'))
 
 const store = useMixerStore()
 
-// Restore uploaded sounds from IndexedDB so they show up in the picker.
+// Restore uploaded sounds and saved scenes from IndexedDB.
 void useSoundLibraryStore().init()
+void store.initScenes()
+
+// Global keyboard shortcuts.
+useHotkeys()
+
+const HOTKEYS: [string, string][] = [
+  ['Space', 'Play / pause'],
+  ['L', 'Loop on / off'],
+  ['C', 'Toggle console'],
+  ['R', 'Toggle RTA'],
+  ['M / S', 'Mute / solo focused channel'],
+  ['F', 'Recenter camera'],
+  ['W A S D', 'Move camera'],
+  ['1–4', 'Recall scene'],
+  ['⇧ 1–4', 'Save scene'],
+  ['Esc', 'Close panels'],
+  ['?', 'This help'],
+]
 
 const challengesOpen = ref(true)
 const infoOpen = ref(false)
@@ -43,6 +63,46 @@ if (import.meta.env.DEV) {
       >
         i
       </button>
+      <button
+        class="rounded-lg border border-zinc-800 bg-zinc-950/85 px-2.5 py-1.5 text-xs font-semibold backdrop-blur transition-colors"
+        :class="uiState.helpOpen ? 'text-emerald-300' : 'text-zinc-400 hover:bg-zinc-800'"
+        title="Keyboard shortcuts (?)"
+        @click="uiState.helpOpen = !uiState.helpOpen"
+      >
+        ?
+      </button>
+    </div>
+
+    <!-- keyboard shortcuts overlay -->
+    <div
+      v-if="uiState.helpOpen"
+      class="absolute left-1/2 top-1/2 z-40 w-72 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-700 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur"
+    >
+      <div class="mb-2 flex items-center justify-between">
+        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          Keyboard shortcuts
+        </p>
+        <button
+          class="rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-700"
+          @click="uiState.helpOpen = false"
+        >
+          Close
+        </button>
+      </div>
+      <dl class="space-y-1">
+        <div
+          v-for="[key, desc] in HOTKEYS"
+          :key="key"
+          class="flex items-center justify-between text-[11px]"
+        >
+          <dt class="text-zinc-400">{{ desc }}</dt>
+          <dd
+            class="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+          >
+            {{ key }}
+          </dd>
+        </div>
+      </dl>
     </div>
 
     <!-- info popover -->

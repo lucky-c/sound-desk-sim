@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useMixerStore } from '../stores/mixer'
 import { useChallengeStore } from '../stores/challenges'
 import { useMeters } from '../composables/useMeters'
@@ -28,11 +28,37 @@ const challenges = useChallengeStore()
 const library = useSoundLibraryStore()
 const meters = useMeters()
 
-const open = ref(true)
 const expanded = reactive<Record<string, boolean>>({})
-const scenesOpen = ref(false)
-const rtaOpen = ref(false)
-const soundsOpen = ref(false)
+
+// ---- resizable console height (persisted) ----
+const MIN_H = 180
+const maxH = () => Math.round(window.innerHeight * 0.8)
+function loadHeight(): number {
+  const saved = Number(localStorage.getItem('sds.consoleHeight'))
+  return saved >= MIN_H ? Math.min(saved, maxH()) : 440
+}
+const bodyHeight = ref(loadHeight())
+watch(bodyHeight, (h) => localStorage.setItem('sds.consoleHeight', String(h)))
+
+let resizeStartY = 0
+let resizeStartH = 0
+function onResizeDown(ev: PointerEvent) {
+  ev.preventDefault()
+  resizeStartY = ev.clientY
+  resizeStartH = bodyHeight.value
+  ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+}
+function onResizeMove(ev: PointerEvent) {
+  if ((ev.buttons & 1) === 0) return
+  // Bottom-anchored: dragging up (smaller clientY) grows the console.
+  bodyHeight.value = clamp(resizeStartH + (resizeStartY - ev.clientY), MIN_H, maxH())
+  if (!uiState.consoleOpen) uiState.consoleOpen = true
+}
+
+/** Click a channel strip to target it with the M/S mute/solo hotkeys. */
+function focusChannel(id: string) {
+  uiState.focusedChannelId = id
+}
 
 // While auditioning the A (original) state of a challenge, freeze the
 // console so edits can't land in a parameter set about to be restored.
@@ -68,8 +94,18 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
 <template>
   <div class="absolute inset-x-0 bottom-0 z-10 flex flex-col">
     <!-- floating panels, anchored above the console -->
-    <AnalyzerPanel v-if="rtaOpen" class="absolute bottom-full left-3 z-30 mb-2" />
+    <AnalyzerPanel v-if="uiState.rtaOpen" class="absolute bottom-full left-3 z-30 mb-2" />
     <EqEditor v-if="uiState.eqChannelId" class="absolute bottom-full right-3 z-30 mb-2" />
+
+    <!-- resize grip: drag to set console height -->
+    <div
+      class="group flex h-2 w-full cursor-ns-resize items-center justify-center bg-zinc-950/95"
+      title="Drag to resize the console"
+      @pointerdown="onResizeDown"
+      @pointermove="onResizeMove"
+    >
+      <div class="h-0.5 w-10 rounded-full bg-zinc-700 group-hover:bg-emerald-500" />
+    </div>
 
     <!-- handle bar -->
     <div
@@ -77,9 +113,10 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
     >
       <button
         class="flex items-center gap-1.5 rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-700"
-        @click="open = !open"
+        title="Toggle console (C)"
+        @click="uiState.consoleOpen = !uiState.consoleOpen"
       >
-        <span class="text-[10px]">{{ open ? '▼' : '▲' }}</span>
+        <span class="text-[10px]">{{ uiState.consoleOpen ? '▼' : '▲' }}</span>
         Console
       </button>
 
@@ -109,9 +146,9 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
 
       <button
         class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-        :class="rtaOpen ? 'bg-emerald-900 text-emerald-300' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
-        title="Real-time spectrum analyzer with EQ curve overlay"
-        @click="rtaOpen = !rtaOpen"
+        :class="uiState.rtaOpen ? 'bg-emerald-900 text-emerald-300' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+        title="Real-time spectrum analyzer with EQ curve overlay (R)"
+        @click="uiState.rtaOpen = !uiState.rtaOpen"
       >
         RTA
       </button>
@@ -120,17 +157,17 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
       <div class="relative">
         <button
           class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-          :class="scenesOpen ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
-          @click="scenesOpen = !scenesOpen"
+          :class="uiState.scenesOpen ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+          @click="uiState.scenesOpen = !uiState.scenesOpen"
         >
           Scenes
         </button>
         <div
-          v-if="scenesOpen"
+          v-if="uiState.scenesOpen"
           class="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-lg border border-zinc-800 bg-zinc-950/95 p-2 backdrop-blur"
         >
           <p class="mb-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
-            Scenes (session only)
+            Scenes (saved on this device)
           </p>
           <div
             v-for="(scene, i) in mixer.scenes"
@@ -166,13 +203,13 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
       <div class="relative">
         <button
           class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-          :class="soundsOpen ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+          :class="uiState.soundsOpen ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
           title="Upload your own audio into the console"
-          @click="soundsOpen = !soundsOpen"
+          @click="uiState.soundsOpen = !uiState.soundsOpen"
         >
           Sounds
         </button>
-        <SoundLibraryPanel v-if="soundsOpen" class="absolute bottom-full left-0 z-30 mb-2" />
+        <SoundLibraryPanel v-if="uiState.soundsOpen" class="absolute bottom-full left-0 z-30 mb-2" />
       </div>
 
       <!-- master monitoring -->
@@ -218,14 +255,27 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
       </div>
     </div>
 
-    <!-- console body -->
+    <!-- console body (height-animated open/close) -->
     <div
-      v-show="open"
-      class="max-h-[440px] overflow-y-auto border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-opacity"
+      class="overflow-hidden border-t border-zinc-800/60 bg-zinc-950/90 backdrop-blur transition-[height,opacity] duration-300 ease-out"
+      :style="{ height: uiState.consoleOpen ? bodyHeight + 'px' : '0px', opacity: uiState.consoleOpen ? 1 : 0 }"
       :class="frozen ? 'pointer-events-none opacity-50' : ''"
     >
-      <div class="flex items-start gap-1.5 overflow-x-auto p-2">
-        <div v-for="ch in mixer.channels" :key="ch.id" class="flex shrink-0 flex-col gap-1">
+      <div
+        class="flex items-start gap-1.5 overflow-x-auto overflow-y-auto p-2"
+        :style="{ height: bodyHeight + 'px' }"
+      >
+        <div
+          v-for="ch in mixer.channels"
+          :key="ch.id"
+          class="flex shrink-0 flex-col gap-1 rounded-lg"
+          :class="
+            uiState.focusedChannelId === ch.id && ch.instrumentId
+              ? 'ring-1 ring-emerald-500/70'
+              : ''
+          "
+          @pointerdown="ch.instrumentId && focusChannel(ch.id)"
+        >
           <!-- slot header: expand + instrument picker -->
           <div class="flex items-center gap-1">
             <button

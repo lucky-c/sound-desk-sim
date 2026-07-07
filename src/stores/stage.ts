@@ -113,12 +113,12 @@ export const useStageStore = defineStore('stage', () => {
 
   // ---- mic bleed ----
   /** Global bleed amount, 0..1: how leaky the stage mics are. */
-  const bleedAmount = ref(0.5)
+  const bleedAmount = ref(0.3)
 
   // ---- PA speakers + backline ----
   const paSpeakers = reactive(defaultPaSpeakers())
   /** Global acoustic (backline) level, 0..1: how loud the band is unamplified. */
-  const backlineAmount = ref(0.4)
+  const backlineAmount = ref(0.3)
 
   function setPaSpeaker(side: 'left' | 'right', pos: StagePosition) {
     paSpeakers[side] = {

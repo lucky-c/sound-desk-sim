@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useMixerStore } from '../stores/mixer'
+import { usePanelResize } from '../composables/usePanelResize'
 import {
   engineState,
   getChannelAnalysers,
@@ -24,6 +25,7 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 
 const W = 540
 const H = 210
+const { scale, onResizeDown, onResizeMove } = usePanelResize('sds.rtaScale', W)
 const FMIN = 20
 const FMAX = 20000
 const SPEC_MIN_DB = -100
@@ -153,7 +155,7 @@ onUnmounted(() => cancelAnimationFrame(raf))
 
 <template>
   <div
-    class="w-[572px] max-w-[92vw] rounded-lg border border-zinc-800 bg-zinc-950/95 p-3 backdrop-blur"
+    class="relative w-fit max-w-[92vw] rounded-lg border border-zinc-800 bg-zinc-950/95 p-3 backdrop-blur"
   >
     <div class="mb-2 flex items-center gap-2">
       <p class="text-[10px] uppercase tracking-wide text-zinc-500">
@@ -171,6 +173,17 @@ onUnmounted(() => cancelAnimationFrame(raf))
         — EQ curve (±{{ CURVE_DB }} dB, 0 at center line)
       </p>
     </div>
-    <canvas ref="canvas" class="block" :style="{ width: `${W}px`, height: `${H}px` }" />
+    <canvas
+      ref="canvas"
+      class="block"
+      :style="{ width: `${W * scale}px`, height: `${H * scale}px` }"
+    />
+    <!-- resize handle -->
+    <div
+      class="absolute bottom-1 right-1 h-3 w-3 cursor-nwse-resize rounded-sm border-b-2 border-r-2 border-zinc-600 hover:border-emerald-500"
+      title="Drag to resize"
+      @pointerdown="onResizeDown"
+      @pointermove="onResizeMove"
+    />
   </div>
 </template>
