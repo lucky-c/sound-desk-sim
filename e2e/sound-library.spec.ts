@@ -55,7 +55,8 @@ test('upload a sound, plug it in, and play', async ({ page }) => {
 
   // A performer for the upload should appear, and Play should start it.
   await page.getByRole('button', { name: 'Play' }).click()
-  await page.waitForTimeout(1500)
+  // Building the graph + decoding the upload can take a moment on CI; the
+  // transport flips to Pause once playback is actually running.
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
   await page.screenshot({ path: `${SHOTS}03-plugged-playing.png` })
 
