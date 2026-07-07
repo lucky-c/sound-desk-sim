@@ -37,6 +37,44 @@ you interact — Play is that gesture.) Turn your volume down first.
   buried kick) for you to fix by ear, with tolerance-based validation,
   directional hints, and A/B comparison.
 
+## How it works
+
+The UI never touches the audio nodes directly. Components write to a Pinia
+store, the store calls the engine, and the engine sets Web Audio parameters
+with click-free ramps:
+
+```mermaid
+flowchart LR
+  U[Knobs / faders / EQ editor] --> S[Pinia stores<br/>mixer · stage · challenges]
+  S --> E[Audio engine<br/>src/audio/engine.ts]
+  E --> W[Web Audio nodes]
+  W -. AnalyserNodes .-> M[Meters · RTA · GR]
+  M --> U
+```
+
+Each channel is an ordered chain of Web Audio nodes ending at the master bus.
+The stage also feeds an acoustic backline path that bypasses the console
+entirely, and both paths end in an always-on safety limiter:
+
+```mermaid
+flowchart LR
+  SRC[Source] --> GAIN[Preamp gain]
+  GAIN --> POL[Polarity ø]
+  POL --> HP[Low cut]
+  HP --> GATE[Noise gate]
+  GATE --> EQ[4-band EQ]
+  EQ --> COMP[Compressor]
+  COMP --> FAD[Fader]
+  FAD --> PAN[Pan + distance]
+  PAN --> MAS[Master bus]
+
+  FAD -. FX send .-> DLY[Delay bus] --> MAS
+  FAD -. room send .-> REV[Reverb bus] --> MAS
+  SRC -. backline .-> ACL[Acoustic limiter] --> OUT[Speakers]
+
+  MAS --> LIM[Safety limiter] --> PA[PA stacks] --> OUT
+```
+
 ## Bring your own audio
 
 The app synthesizes its own instruments, so it makes sound with zero external
