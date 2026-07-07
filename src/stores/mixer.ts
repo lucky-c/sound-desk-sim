@@ -9,7 +9,7 @@ import type {
   TransportState,
 } from '../types'
 import { DCA_COUNT, NUMERIC_PARAM_KEYS, defaultDcas, neutralParams } from '../types'
-import { getInstrument } from '../audio/instruments'
+import { getInstrument, getInstrumentMeta } from '../audio/instruments'
 import * as engine from '../audio/engine'
 
 /**
@@ -115,7 +115,7 @@ export const useMixerStore = defineStore('mixer', {
       ) {
         return // already plugged elsewhere
       }
-      const inst = getInstrument(instrumentId)
+      const inst = getInstrumentMeta(instrumentId)
       ch.instrumentId = inst ? inst.id : null
       ch.name = inst ? inst.name : `Ch ${ch.num}`
       ch.color = inst ? inst.color : '#71717a'

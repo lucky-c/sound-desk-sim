@@ -12,7 +12,7 @@ import {
 } from '../audio/spatial'
 import * as engine from '../audio/engine'
 import { engineState } from '../audio/engine'
-import { getInstrument } from '../audio/instruments'
+import { getInstrumentMeta } from '../audio/instruments'
 import { clamp, dbToLin } from '../lib/units'
 import { useMixerStore } from './mixer'
 
@@ -109,7 +109,7 @@ export const useStageStore = defineStore('stage', () => {
     for (const ch of mixer.channels) {
       if (!ch.instrumentId) continue
       const pos = positions[ch.id]
-      const inst = getInstrument(ch.instrumentId)
+      const inst = getInstrumentMeta(ch.instrumentId)
       if (!pos || !inst) continue
       const s = computeSpatial(pos)
       engine.setAcoustic(

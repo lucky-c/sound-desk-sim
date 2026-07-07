@@ -150,3 +150,10 @@ vite.config.ts.timestamp-*
 
 # PWA dev artifacts (vite-plugin-pwa)
 dev-dist
+
+# Playwright e2e artifacts (screenshots/report are regenerated per run)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/e2e/__screenshots__/

@@ -5,6 +5,11 @@ instruments. On the next Play (or re-plug), any instrument that finds its
 file here uses it instead of the synth fallback (the strip shows a small
 `FILE`/`SYNTH` badge).
 
+> Prefer uploading at runtime? Use the **Sounds** button in the console: it
+> adds files to a Sound Library (stored in your browser via IndexedDB) as
+> *new* pluggable instruments, without replacing any built-in. This folder is
+> the build-time way to override an existing instrument's sound.
+
 Expected file names — `<instrument-id>.wav` tried first, then
 `<instrument-id>.mp3`:
 
