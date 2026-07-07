@@ -45,6 +45,14 @@ function onPointerMove(ev: PointerEvent) {
   emit('update:modelValue', value)
 }
 
+/** Double-click snaps to the middle of the sweep (knob points straight up). */
+function onDoubleClick() {
+  const value = props.log
+    ? posToLog(0.5, props.min, props.max)
+    : (props.min + props.max) / 2
+  emit('update:modelValue', value)
+}
+
 const display = computed(() => {
   const v = props.modelValue
   const text =
@@ -60,9 +68,10 @@ const display = computed(() => {
     </span>
     <div
       class="relative h-8 w-8 cursor-ns-resize touch-none rounded-full border border-zinc-600 bg-gradient-to-b from-zinc-700 to-zinc-800 shadow-inner"
-      :title="`${label}: drag up/down`"
+      :title="`${label}: drag up/down · double-click to center`"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
+      @dblclick="onDoubleClick"
     >
       <!-- min/max end marks -->
       <div class="absolute -bottom-0.5 -left-0.5 h-1 w-1 rounded-full bg-zinc-700" />

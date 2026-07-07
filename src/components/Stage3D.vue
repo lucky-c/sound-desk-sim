@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { useMixerStore } from '../stores/mixer'
 import { useStageStore } from '../stores/stage'
 import { useMeters } from '../composables/useMeters'
+import { uiState } from '../composables/uiState'
 import { clamp, linToDb } from '../lib/units'
 import {
   ROOM_PRESETS,
@@ -82,6 +83,57 @@ onMounted(() => {
   controls.minDistance = 6
   controls.maxDistance = 40
   controls.maxPolarAngle = Math.PI * 0.49
+
+  // Default framing, restored by the camera-reset (F) hotkey.
+  const HOME_CAM = camera.position.clone()
+  const HOME_TARGET = controls.target.clone()
+  function resetCamera() {
+    camera.position.copy(HOME_CAM)
+    controls.target.copy(HOME_TARGET)
+    controls.update()
+  }
+  const stopCamReset = watch(() => uiState.cameraResetNonce, resetCamera)
+
+  // ---- WASD movement: truck the camera + its target across the ground,
+  // relative to where the camera is looking. Active only while the pointer is
+  // over the stage (so S doesn't also fire the solo hotkey). ----
+  const heldKeys = new Set<string>()
+  function isTyping(el: EventTarget | null): boolean {
+    const n = el as HTMLElement | null
+    return !!n && (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA' || n.tagName === 'SELECT' || n.isContentEditable)
+  }
+  function onKeyDown(e: KeyboardEvent) {
+    if (isTyping(e.target) || !uiState.stageActive) return
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) heldKeys.add(e.code)
+  }
+  function onKeyUp(e: KeyboardEvent) {
+    heldKeys.delete(e.code)
+  }
+  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('keyup', onKeyUp)
+
+  const panForward = new THREE.Vector3()
+  const panRight = new THREE.Vector3()
+  const panDelta = new THREE.Vector3()
+  function applyMovement() {
+    if (heldKeys.size === 0) return
+    // Ground-plane forward (camera look direction flattened) and right.
+    camera.getWorldDirection(panForward)
+    panForward.y = 0
+    if (panForward.lengthSq() < 1e-6) return
+    panForward.normalize()
+    panRight.crossVectors(panForward, camera.up).normalize()
+    const speed = 0.22
+    panDelta.set(0, 0, 0)
+    if (heldKeys.has('KeyW')) panDelta.add(panForward)
+    if (heldKeys.has('KeyS')) panDelta.sub(panForward)
+    if (heldKeys.has('KeyD')) panDelta.add(panRight)
+    if (heldKeys.has('KeyA')) panDelta.sub(panRight)
+    if (panDelta.lengthSq() === 0) return
+    panDelta.normalize().multiplyScalar(speed)
+    camera.position.add(panDelta)
+    controls.target.add(panDelta)
+  }
 
   // ---- venue ----
   // Objects the raycaster can grab (performers, PA stacks, FOH desk, stage).
@@ -427,6 +479,17 @@ onMounted(() => {
   renderer.domElement.addEventListener('pointerup', onPointerUp)
   renderer.domElement.addEventListener('pointercancel', onPointerUp)
 
+  // Track whether the pointer is over the stage, to arm WASD movement.
+  function onEnter() {
+    uiState.stageActive = true
+  }
+  function onLeave() {
+    uiState.stageActive = false
+    heldKeys.clear()
+  }
+  host.addEventListener('pointerenter', onEnter)
+  host.addEventListener('pointerleave', onLeave)
+
   // ---- sizing / render loop ----
   function resize() {
     const w = host.clientWidth
@@ -450,6 +513,7 @@ onMounted(() => {
       const s = 1 + norm * 0.35
       p.body.scale.set(1, s, 1)
     }
+    applyMovement()
     controls.update()
     renderer.render(scene, camera)
     raf = requestAnimationFrame(loop)
@@ -494,7 +558,13 @@ onMounted(() => {
     stopPaSync()
     stopFohSync()
     stopStageSync()
+    stopCamReset()
     ro.disconnect()
+    window.removeEventListener('keydown', onKeyDown)
+    window.removeEventListener('keyup', onKeyUp)
+    host.removeEventListener('pointerenter', onEnter)
+    host.removeEventListener('pointerleave', onLeave)
+    uiState.stageActive = false
     renderer.domElement.removeEventListener('pointerdown', onPointerDown)
     renderer.domElement.removeEventListener('pointermove', onPointerMove)
     renderer.domElement.removeEventListener('pointerup', onPointerUp)
@@ -594,7 +664,7 @@ onMounted(() => {
         Drag performers, the PA stacks, or the green FOH desk (your ears) to
         move them; positions change pan, level, and room. Grab the amber ◆
         handle to slide the whole stage — the band moves together. Drag empty
-        space to orbit · scroll to zoom.
+        space to orbit · scroll to zoom · WASD to move · F to recenter.
       </p>
     </div>
   </div>
