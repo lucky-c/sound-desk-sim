@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // Served from a GitHub Pages project subpath (https://<user>.github.io/
+  // sound-desk-sim/). Change to '/' for a user/org page or a custom domain.
+  base: '/sound-desk-sim/',
   plugins: [
     vue(),
     tailwindcss(),
@@ -20,7 +23,7 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           {
-            src: '/icon.svg',
+            src: 'icon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any',
