@@ -21,8 +21,11 @@ export const FOH_POS: Readonly<StagePosition> = { x: 0, z: 8 }
 /** Where the FOH desk may be dragged: out in the audience, in front of stage. */
 export const FOH_BOUNDS = { minX: -6, maxX: 6, minZ: 3, maxZ: 13 }
 
-/** Playable stage area (drag clamps to this). */
+/** Playable stage area (a performer's on-deck position clamps to this). */
 export const STAGE_BOUNDS = { minX: -4.5, maxX: 4.5, minZ: -3.5, maxZ: 1.5 }
+
+/** How far the whole stage (deck + performers) may be slid from origin. */
+export const STAGE_OFFSET_BOUNDS = { minX: -4, maxX: 4, minZ: -3, maxZ: 4 }
 
 /** Distance from FOH to the front-center of the stage — the 0 dB reference. */
 const REF_DIST = Math.hypot(FOH_POS.x, FOH_POS.z - STAGE_BOUNDS.maxZ)

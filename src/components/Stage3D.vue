@@ -84,20 +84,52 @@ onMounted(() => {
   controls.maxPolarAngle = Math.PI * 0.49
 
   // ---- venue ----
+  // Objects the raycaster can grab (performers, PA stacks, FOH desk, stage).
+  let pickable: THREE.Object3D[] = []
+
+  // The stage deck: floor + grid + performers + a drag handle all ride in one
+  // group, so sliding it moves the whole band together (audience, PA and FOH
+  // stay fixed in the world).
+  const stageGroup = new THREE.Group()
   const stageFloor = box(11, 0.4, 6.4, mat({ color: 0x27272e, roughness: 0.85 }))
   stageFloor.position.set(0, -0.2, -1)
-  scene.add(stageFloor)
+  stageGroup.add(stageFloor)
 
   const grid = track(new THREE.GridHelper(10, 10, 0x3f3f46, 0x2c2c33))
   grid.position.set(0, 0.01, -1)
-  scene.add(grid)
+  stageGroup.add(grid)
+
+  // "Move stage" handle — a distinct puck at the downstage edge you grab to
+  // slide the whole deck. Kept separate from the floor so dragging the floor
+  // still orbits the camera.
+  const stageHandle = new THREE.Group()
+  const handlePuck = new THREE.Mesh(
+    track(new THREE.CylinderGeometry(0.45, 0.55, 0.28, 24)),
+    mat({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.45, roughness: 0.5 }),
+  )
+  handlePuck.position.y = 0.14
+  handlePuck.userData.stageHandle = true
+  pickable.push(handlePuck)
+  stageHandle.add(handlePuck)
+  const handleLabel = labelSprite('◆ MOVE STAGE', '#fbbf24')
+  handleLabel.position.y = 0.95
+  stageHandle.add(handleLabel)
+  stageHandle.position.set(0, 0, 2.4)
+  stageGroup.add(stageHandle)
+
+  scene.add(stageGroup)
+  stageGroup.position.set(stage.stageOffset.x, 0, stage.stageOffset.z)
+  function syncStageOffset() {
+    stageGroup.position.set(stage.stageOffset.x, 0, stage.stageOffset.z)
+  }
+  const stopStageSync = watch(
+    () => [stage.stageOffset.x, stage.stageOffset.z],
+    syncStageOffset,
+  )
 
   const audienceFloor = box(30, 0.1, 18, mat({ color: 0x141417, roughness: 1 }))
   audienceFloor.position.set(0, -0.5, 11)
   scene.add(audienceFloor)
-
-  // Objects the raycaster can grab (performers, PA stacks, FOH desk).
-  let pickable: THREE.Object3D[] = []
 
   // FOH desk marker — the listening position, now draggable.
   const foh = new THREE.Group()
@@ -213,14 +245,16 @@ onMounted(() => {
     label.position.y = 2.3
     group.add(label)
 
-    scene.add(group)
+    // Parented to the stage deck: on-deck position is local, so sliding the
+    // whole stage translates every performer with it.
+    stageGroup.add(group)
     performers.set(id, { id, instrumentId, group, ringMat, body })
   }
 
   function removePerformer(id: string) {
     const p = performers.get(id)
     if (!p) return
-    scene.remove(p.group)
+    stageGroup.remove(p.group)
     pickable = pickable.filter((o) => o.userData.channelId !== id)
     performers.delete(id)
   }
@@ -295,6 +329,9 @@ onMounted(() => {
   let dragId: string | null = null
   let dragPa: 'left' | 'right' | null = null
   let dragFoh = false
+  let dragStage = false
+  const stageDragStartHit = new THREE.Vector3()
+  const stageDragStartOffset = { x: 0, z: 0 }
 
   function setNdc(ev: PointerEvent) {
     const rect = renderer.domElement.getBoundingClientRect()
@@ -320,33 +357,51 @@ onMounted(() => {
     const id = hit?.object.userData.channelId as string | undefined
     const pa = hit?.object.userData.paSide as 'left' | 'right' | undefined
     const isFoh = hit?.object.userData.foh === true
-    if (!id && !pa && !isFoh) return
+    const isStage = hit?.object.userData.stageHandle === true
+    if (!id && !pa && !isFoh && !isStage) return
     ev.preventDefault()
     dragId = id ?? null
     dragPa = pa ?? null
     dragFoh = isFoh
+    dragStage = isStage
+    if (isStage && raycaster.ray.intersectPlane(floorPlane, hitPoint)) {
+      stageDragStartHit.copy(hitPoint)
+      stageDragStartOffset.x = stage.stageOffset.x
+      stageDragStartOffset.z = stage.stageOffset.z
+    }
     dragReadout.value = id
       ? describe(id)
       : pa
         ? `PA ${pa} stack`
-        : 'FOH desk (your ears)'
+        : isFoh
+          ? 'FOH desk (your ears)'
+          : 'Stage — move the whole band'
     controls.enabled = false
     renderer.domElement.setPointerCapture(ev.pointerId)
   }
 
   function onPointerMove(ev: PointerEvent) {
-    if (!dragId && !dragPa && !dragFoh) return
+    if (!dragId && !dragPa && !dragFoh && !dragStage) return
     setNdc(ev)
     raycaster.setFromCamera(ndc, camera)
     if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return
-    if (dragFoh) {
+    if (dragStage) {
+      // Slide the whole deck by the drag delta since grabbing the handle.
+      stage.setStageOffset({
+        x: stageDragStartOffset.x + (hitPoint.x - stageDragStartHit.x),
+        z: stageDragStartOffset.z + (hitPoint.z - stageDragStartHit.z),
+      })
+      const o = stage.stageOffset
+      dragReadout.value = `Stage: ${o.x.toFixed(1)}m · ${o.z.toFixed(1)}m`
+    } else if (dragFoh) {
       stage.setFohPos({ x: hitPoint.x, z: hitPoint.z })
       const p = stage.fohPos
       dragReadout.value = `FOH: ${p.x.toFixed(1)}m · ${p.z.toFixed(1)}m from stage`
     } else if (dragId) {
+      // Convert the world hit back to an on-deck (stage-local) position.
       stage.setPosition(dragId, {
-        x: clamp(hitPoint.x, STAGE_BOUNDS.minX, STAGE_BOUNDS.maxX),
-        z: clamp(hitPoint.z, STAGE_BOUNDS.minZ, STAGE_BOUNDS.maxZ),
+        x: clamp(hitPoint.x - stage.stageOffset.x, STAGE_BOUNDS.minX, STAGE_BOUNDS.maxX),
+        z: clamp(hitPoint.z - stage.stageOffset.z, STAGE_BOUNDS.minZ, STAGE_BOUNDS.maxZ),
       })
       dragReadout.value = describe(dragId)
     } else if (dragPa) {
@@ -357,10 +412,11 @@ onMounted(() => {
   }
 
   function onPointerUp(ev: PointerEvent) {
-    if (!dragId && !dragPa && !dragFoh) return
+    if (!dragId && !dragPa && !dragFoh && !dragStage) return
     dragId = null
     dragPa = null
     dragFoh = false
+    dragStage = false
     dragReadout.value = null
     controls.enabled = true
     renderer.domElement.releasePointerCapture(ev.pointerId)
@@ -437,6 +493,7 @@ onMounted(() => {
     stopRoomSync()
     stopPaSync()
     stopFohSync()
+    stopStageSync()
     ro.disconnect()
     renderer.domElement.removeEventListener('pointerdown', onPointerDown)
     renderer.domElement.removeEventListener('pointermove', onPointerMove)
@@ -535,9 +592,9 @@ onMounted(() => {
       <p class="max-w-44 text-[10px] leading-snug text-zinc-500">{{ roomHint }}</p>
       <p class="max-w-44 border-t border-zinc-800 pt-1.5 text-[10px] leading-snug text-zinc-600">
         Drag performers, the PA stacks, or the green FOH desk (your ears) to
-        move them; positions change pan, level, and room. Moving FOH re-mixes
-        the whole stage around your new spot. Drag empty space to orbit ·
-        scroll to zoom.
+        move them; positions change pan, level, and room. Grab the amber ◆
+        handle to slide the whole stage — the band moves together. Drag empty
+        space to orbit · scroll to zoom.
       </p>
     </div>
   </div>
