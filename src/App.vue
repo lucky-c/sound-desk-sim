@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { defineAsyncComponent, ref } from 'vue'
 import { useMixerStore } from './stores/mixer'
+import { useSoundLibraryStore } from './stores/soundLibrary'
 import MixerDrawer from './components/MixerDrawer.vue'
 import ChallengePanel from './components/ChallengePanel.vue'
 
@@ -8,6 +9,9 @@ import ChallengePanel from './components/ChallengePanel.vue'
 const Stage3D = defineAsyncComponent(() => import('./components/Stage3D.vue'))
 
 const store = useMixerStore()
+
+// Restore uploaded sounds from IndexedDB so they show up in the picker.
+void useSoundLibraryStore().init()
 
 const challengesOpen = ref(true)
 const infoOpen = ref(false)

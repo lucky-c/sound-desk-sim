@@ -6,9 +6,11 @@
  * replaced by dropping `<id>.wav` / `<id>.mp3` into /public/stems/.
  */
 
+import { getUserSound } from './soundLibrary'
+
 export const BPM = 112
 export const BEATS_PER_LOOP = 16 // 4 bars of 4/4
-const SPB = 60 / BPM
+export const SPB = 60 / BPM // seconds per beat
 const BAR = 4 * SPB
 const EIGHTH = SPB / 2
 const SIXTEENTH = SPB / 4
@@ -370,6 +372,28 @@ export const INSTRUMENTS: Instrument[] = [
 
 export function getInstrument(id: string | null): Instrument | null {
   return INSTRUMENTS.find((i) => i.id === id) ?? null
+}
+
+/** Name/color/acoustic metadata shared by synth instruments and uploads. */
+export interface InstrumentMeta {
+  id: string
+  name: string
+  color: string
+  acousticDb: number
+}
+
+/**
+ * Resolve display metadata for any pluggable source — a built-in synth or a
+ * user upload from the Sound Library. Used by the stores and UI so uploaded
+ * sounds behave like first-class instruments.
+ */
+export function getInstrumentMeta(id: string | null): InstrumentMeta | null {
+  const synth = getInstrument(id)
+  if (synth) return synth
+  const user = getUserSound(id)
+  return user
+    ? { id: user.id, name: user.name, color: user.color, acousticDb: user.acousticDb }
+    : null
 }
 
 export async function renderInstrument(

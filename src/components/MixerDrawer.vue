@@ -6,8 +6,10 @@ import { useMeters } from '../composables/useMeters'
 import { uiState } from '../composables/uiState'
 import { clamp, linToDb } from '../lib/units'
 import { INSTRUMENTS } from '../audio/instruments'
+import { useSoundLibraryStore } from '../stores/soundLibrary'
 import type { ChannelConfig } from '../types'
 import ChannelStrip from './ChannelStrip.vue'
+import SoundLibraryPanel from './SoundLibraryPanel.vue'
 import ParamSlider from './ParamSlider.vue'
 import RotaryKnob from './RotaryKnob.vue'
 import VFader from './VFader.vue'
@@ -23,12 +25,14 @@ import EqEditor from './EqEditor.vue'
 
 const mixer = useMixerStore()
 const challenges = useChallengeStore()
+const library = useSoundLibraryStore()
 const meters = useMeters()
 
 const open = ref(true)
 const expanded = reactive<Record<string, boolean>>({})
 const scenesOpen = ref(false)
 const rtaOpen = ref(false)
+const soundsOpen = ref(false)
 
 // While auditioning the A (original) state of a challenge, freeze the
 // console so edits can't land in a parameter set about to be restored.
@@ -43,9 +47,11 @@ function togglePlay() {
 }
 
 function availableFor(ch: ChannelConfig) {
-  return INSTRUMENTS.filter(
-    (inst) => inst.id === ch.instrumentId || !mixer.usedInstrumentIds.has(inst.id),
-  )
+  const free = (id: string) => id === ch.instrumentId || !mixer.usedInstrumentIds.has(id)
+  return {
+    synths: INSTRUMENTS.filter((inst) => free(inst.id)),
+    uploads: library.sounds.filter((s) => free(s.id)),
+  }
 }
 
 function onPlugSelect(ch: ChannelConfig, event: Event) {
@@ -156,6 +162,19 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
         </div>
       </div>
 
+      <!-- sound library -->
+      <div class="relative">
+        <button
+          class="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+          :class="soundsOpen ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+          title="Upload your own audio into the console"
+          @click="soundsOpen = !soundsOpen"
+        >
+          Sounds
+        </button>
+        <SoundLibraryPanel v-if="soundsOpen" class="absolute bottom-full left-0 z-30 mb-2" />
+      </div>
+
       <!-- master monitoring -->
       <div class="ml-auto flex items-center gap-3">
         <div class="hidden w-36 sm:block">
@@ -223,9 +242,16 @@ const limiting = computed(() => meters.master.reductionDb < -0.5)
               @change="onPlugSelect(ch, $event)"
             >
               <option value="">— empty —</option>
-              <option v-for="inst in availableFor(ch)" :key="inst.id" :value="inst.id">
-                {{ inst.name }}
-              </option>
+              <optgroup label="Instruments">
+                <option v-for="inst in availableFor(ch).synths" :key="inst.id" :value="inst.id">
+                  {{ inst.name }}
+                </option>
+              </optgroup>
+              <optgroup v-if="availableFor(ch).uploads.length" label="Sound Library">
+                <option v-for="s in availableFor(ch).uploads" :key="s.id" :value="s.id">
+                  {{ s.name }}
+                </option>
+              </optgroup>
             </select>
           </div>
 

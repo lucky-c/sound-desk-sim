@@ -2,7 +2,8 @@ import { reactive } from 'vue'
 import type { ChannelConfig, DcaState, NumericParamKey } from '../types'
 import { defaultDcas } from '../types'
 import { clamp, dbToLin } from '../lib/units'
-import { getInstrument, renderInstrument } from './instruments'
+import { getInstrumentMeta, renderInstrument, SPB } from './instruments'
+import { getUserSound, getUserSoundData } from './soundLibrary'
 import { createGateNode, ensureGateModule } from './gateWorklet'
 
 /**
@@ -64,6 +65,8 @@ interface ChannelNodes {
   stagePan: number
   buffer: AudioBuffer | null
   source: AudioBufferSourceNode | null
+  /** Loop length in seconds for an uploaded sound; null = loop whole buffer. */
+  loopLen: number | null
 }
 
 /** Time constant for all user-driven parameter ramps (avoids zipper noise). */
@@ -321,6 +324,7 @@ function buildChannel(c: AudioContext, cfg: ChannelConfig): void {
     stagePan: 0,
     buffer: null,
     source: null,
+    loopLen: null,
   })
 }
 
@@ -348,6 +352,21 @@ async function loadBuffer(c: AudioContext, instrumentId: string): Promise<AudioB
 async function loadChannelBuffer(c: AudioContext, cfg: ChannelConfig): Promise<void> {
   const nodes = channelNodes.get(cfg.id)
   if (!nodes || !cfg.instrumentId) return
+  nodes.loopLen = null
+
+  // Sound Library upload: decode its stored bytes and loop over the user's
+  // stated length so it stays locked to the 112 BPM grid.
+  const user = getUserSound(cfg.instrumentId)
+  if (user) {
+    const data = await getUserSoundData(user.id)
+    if (data) {
+      nodes.buffer = await c.decodeAudioData(data)
+      nodes.loopLen = user.beats > 0 ? user.beats * SPB : null
+      engineState.stemSources[cfg.id] = 'file'
+    }
+    return
+  }
+
   const fileBuf = await loadBuffer(c, cfg.instrumentId)
   if (fileBuf) {
     nodes.buffer = fileBuf
@@ -364,6 +383,14 @@ function startSource(c: AudioContext, nodes: ChannelNodes, when: number, offset:
   const src = c.createBufferSource()
   src.buffer = nodes.buffer
   src.loop = looping
+  // Uploads loop over their user-set length (grid-aligned), not the raw file
+  // duration; built-ins loop the whole rendered buffer.
+  const loopEnd =
+    nodes.loopLen != null ? Math.min(nodes.loopLen, nodes.buffer.duration) : nodes.buffer.duration
+  if (nodes.loopLen != null) {
+    src.loopStart = 0
+    src.loopEnd = loopEnd
+  }
   src.connect(nodes.srcTap)
   src.onended = () => {
     liveSources.delete(src)
@@ -373,7 +400,7 @@ function startSource(c: AudioContext, nodes: ChannelNodes, when: number, offset:
       onAllEnded?.()
     }
   }
-  src.start(when, offset % nodes.buffer.duration)
+  src.start(when, offset % loopEnd)
   nodes.source = src
   liveSources.add(src)
 }
@@ -457,8 +484,9 @@ export async function plugChannel(
   if (!nodes || !engineState.built || !ctx) return
   stopSource(nodes)
   nodes.buffer = null
+  nodes.loopLen = null
   delete engineState.stemSources[channelId]
-  if (!instrumentId || !getInstrument(instrumentId)) return
+  if (!instrumentId || !getInstrumentMeta(instrumentId)) return
 
   const cfg = { id: channelId, instrumentId } as ChannelConfig
   await loadChannelBuffer(ctx, cfg)
