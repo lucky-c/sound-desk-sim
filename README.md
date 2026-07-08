@@ -8,7 +8,13 @@ knob does by turning it.
 Built with Vue 3, Pinia, and the Web Audio API. No plugins, no backend,
 installable as a PWA.
 
-![Sound Desk Sim — 3D stage with performers, venue controls, a challenge panel, and the mixing console](docs/screenshot.png)
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/lucky-c/sound-desk-sim/main/docs/screenshot.png"
+    alt="Sound Desk Sim — 3D stage with performers, venue controls, a challenge panel, and the mixing console"
+    width="900"
+  />
+</p>
 
 ## Quick start
 
@@ -108,3 +114,7 @@ picker. See [`src/challenges/types.ts`](src/challenges/types.ts) for the shape.
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">Made with ✨ Vibe ✨ by <a href="https://github.com/lucky-c">lucky-c</a></p>
