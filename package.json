@@ -2,7 +2,18 @@
   "name": "sound-desk-sim",
   "private": true,
   "version": "0.1.0",
+  "description": "A live-sound mixing desk that runs in your browser — a full channel-strip signal chain and a 3D stage you can hear in real time. Vue 3 + Web Audio API, installable as a PWA.",
+  "license": "MIT",
+  "homepage": "https://lucky-c.github.io/sound-desk-sim/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lucky-c/sound-desk-sim.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lucky-c/sound-desk-sim/issues"
+  },
   "type": "module",
+  "packageManager": "bun@1.3.11",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
