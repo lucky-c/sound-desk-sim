@@ -88,11 +88,16 @@ the synth.
 ## Development
 
 ```sh
-bun run dev      # dev server
-bun run build    # typecheck + production build
-bun run preview  # preview the build
-bun test         # run tests
+bun run dev        # dev server
+bun run typecheck  # type-check with vue-tsc
+bun run test       # unit tests
+bun run test:e2e   # Playwright smoke tests
+bun run build      # typecheck + production build
+bun run preview    # preview the build
 ```
+
+New contributor? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the code
+layout, and conventions, plus the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Authoring a challenge
 
